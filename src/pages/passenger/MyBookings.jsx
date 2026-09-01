@@ -1,0 +1,1240 @@
+import { useEffect, useState } from "react";
+
+function MyBookings() {
+  const [filter, setFilter] = useState("All");
+
+  const [bookings, setBookings] = useState([]);
+  const [vehicleTypes, setVehicleTypes] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [users, setUsers] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [bookingHistory, setBookingHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const getStoredUser = () => {
+    const localUser = localStorage.getItem("user");
+    const sessionUser = sessionStorage.getItem("user");
+
+    try {
+      if (localUser) {
+        return JSON.parse(localUser);
+      }
+
+      if (sessionUser) {
+        return JSON.parse(sessionUser);
+      }
+
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  const getToken = () => {
+    return (
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("token") ||
+      ""
+    );
+  };
+
+  const user = getStoredUser();
+
+  const getHeaders = () => {
+    const token = getToken();
+
+    return {
+      "Content-Type": "application/json",
+      ...(token
+        ? {
+            Authorization: `Bearer ${token}`,
+          }
+        : {}),
+    };
+  };
+
+  useEffect(() => {
+    loadBookings();
+  }, []);
+
+  const loadBookings = async () => {
+    if (!user) {
+      setError("Please login to view your bookings.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const [
+        bookingsResponse,
+        vehicleTypesResponse,
+        driversResponse,
+        usersResponse,
+      ] = await Promise.all([
+        fetch(
+          "http://localhost:5171/api/bookings",
+          {
+            headers: getHeaders(),
+          }
+        ),
+
+        fetch(
+          "http://localhost:5171/api/vehicletypes",
+          {
+            headers: getHeaders(),
+          }
+        ),
+
+        fetch(
+          "http://localhost:5171/api/drivers",
+          {
+            headers: getHeaders(),
+          }
+        ),
+
+        fetch(
+          "http://localhost:5171/api/users",
+          {
+            headers: getHeaders(),
+          }
+        ),
+      ]);
+
+      if (!bookingsResponse.ok) {
+        throw new Error("Unable to load bookings.");
+      }
+
+      const allBookings =
+        await bookingsResponse.json();
+
+      const vehicleData =
+        vehicleTypesResponse.ok
+          ? await vehicleTypesResponse.json()
+          : [];
+
+      const driverData =
+        driversResponse.ok
+          ? await driversResponse.json()
+          : [];
+
+      const userData =
+        usersResponse.ok
+          ? await usersResponse.json()
+          : [];
+
+      const passengerBookings =
+        allBookings.filter(
+          (booking) =>
+            Number(booking.passengerId) ===
+            Number(user.userId)
+        );
+
+      passengerBookings.sort((a, b) => {
+        const aDate = new Date(
+          a.createdAt || 0
+        );
+
+        const bDate = new Date(
+          b.createdAt || 0
+        );
+
+        return bDate - aDate;
+      });
+
+      setBookings(passengerBookings);
+      setVehicleTypes(vehicleData);
+      setDrivers(driverData);
+      setUsers(userData);
+    } catch (err) {
+      console.error(
+        "My bookings error:",
+        err
+      );
+
+      setError(
+        err.message ||
+          "Unable to load your bookings."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatStatus = (status) => {
+    if (!status) {
+      return "Unknown";
+    }
+
+    return status
+      .replaceAll("_", " ")
+      .toLowerCase()
+      .replace(
+        /\b\w/g,
+        (letter) =>
+          letter.toUpperCase()
+      );
+  };
+
+  const getStatusClass = (status) => {
+    switch (status) {
+      case "PENDING":
+        return "pending";
+
+      case "WAITING_FOR_DRIVER":
+        return "waiting";
+
+      case "ACCEPTED":
+        return "accepted";
+
+      case "DRIVER_ARRIVING":
+        return "arriving";
+
+      case "ON_RIDE":
+        return "onride";
+
+      case "COMPLETED":
+        return "completed";
+
+      case "CANCELLED":
+        return "cancelled";
+
+      case "REJECTED":
+        return "rejected";
+
+      default:
+        return "default";
+    }
+  };
+
+  const getVehicleName = (
+    vehicleTypeId
+  ) => {
+    const vehicle =
+      vehicleTypes.find(
+        (item) =>
+          Number(
+            item.vehicleTypeId
+          ) ===
+          Number(vehicleTypeId)
+      );
+
+    return vehicle?.typeName || "—";
+  };
+
+  const getDriverName = (
+    driverId
+  ) => {
+    if (!driverId) {
+      return "Not Assigned";
+    }
+
+    const driver =
+      drivers.find(
+        (item) =>
+          Number(item.driverId) ===
+          Number(driverId)
+      );
+
+    if (!driver) {
+      return "Not Assigned";
+    }
+
+    const driverUser =
+      users.find(
+        (item) =>
+          Number(item.userId) ===
+          Number(driver.userId)
+      );
+
+    return (
+      driverUser?.fullName ||
+      "Assigned Driver"
+    );
+  };
+
+  const getFilterCategory = (
+    status
+  ) => {
+    if (
+      [
+        "PENDING",
+        "WAITING_FOR_DRIVER",
+        "ACCEPTED",
+        "DRIVER_ARRIVING",
+        "ON_RIDE",
+      ].includes(status)
+    ) {
+      return "Active";
+    }
+
+    if (status === "COMPLETED") {
+      return "Completed";
+    }
+
+    if (
+      status === "CANCELLED"
+    ) {
+      return "Cancelled";
+    }
+
+    if (
+      status === "REJECTED"
+    ) {
+      return "Rejected";
+    }
+
+    return "Other";
+  };
+
+  const filteredBookings =
+    filter === "All"
+      ? bookings
+      : bookings.filter(
+          (booking) =>
+            getFilterCategory(
+              booking.bookingStatus
+            ) === filter
+        );
+
+  const handleViewBooking =
+    async (booking) => {
+      setSelectedBooking(booking);
+      setBookingHistory([]);
+      setHistoryLoading(true);
+
+      try {
+        const response =
+          await fetch(
+            `http://localhost:5171/api/bookings/${booking.bookingId}/history`,
+            {
+              headers: getHeaders(),
+            }
+          );
+
+        if (response.ok) {
+          const data =
+            await response.json();
+
+          setBookingHistory(data);
+        }
+      } catch (err) {
+        console.error(
+          "Booking history error:",
+          err
+        );
+      } finally {
+        setHistoryLoading(false);
+      }
+    };
+
+  const formatDate = (date) => {
+    if (!date) {
+      return "—";
+    }
+
+    const parsed =
+      new Date(date);
+
+    if (
+      Number.isNaN(
+        parsed.getTime()
+      )
+    ) {
+      return date;
+    }
+
+    return parsed.toLocaleDateString();
+  };
+
+  const formatTime = (time) => {
+    if (!time) {
+      return "—";
+    }
+
+    return time
+      .toString()
+      .substring(0, 5);
+  };
+
+  return (
+    <>
+      <style>{`
+        .my-bookings-page {
+          min-height: 100vh;
+
+          padding: 30px;
+
+          background: #f4f7fa;
+
+          font-family:
+            Arial,
+            Helvetica,
+            sans-serif;
+        }
+
+        .my-bookings-page h1 {
+          margin: 0 0 6px;
+
+          color: #0b2946;
+
+          font-size: 28px;
+        }
+
+        .my-bookings-page > p {
+          margin: 0 0 20px;
+
+          color: #7b8794;
+
+          font-size: 12px;
+        }
+
+        .booking-summary {
+          display: grid;
+
+          grid-template-columns:
+            repeat(4, 1fr);
+
+          gap: 12px;
+
+          margin-bottom: 20px;
+        }
+
+        .booking-summary-card {
+          padding: 15px;
+
+          background: white;
+
+          border:
+            1px solid #e2e7ec;
+
+          border-radius: 8px;
+        }
+
+        .booking-summary-card span {
+          display: block;
+
+          margin-bottom: 5px;
+
+          color: #7b8794;
+
+          font-size: 9px;
+        }
+
+        .booking-summary-card strong {
+          color: #0b2946;
+
+          font-size: 20px;
+        }
+
+        .booking-filter-bar {
+          display: flex;
+
+          flex-wrap: wrap;
+
+          gap: 8px;
+
+          margin-bottom: 18px;
+        }
+
+        .booking-filter-bar button {
+          padding: 8px 13px;
+
+          border:
+            1px solid #d8e0e6;
+
+          background: white;
+
+          border-radius: 20px;
+
+          color: #61717f;
+
+          font-size: 9px;
+
+          cursor: pointer;
+        }
+
+        .booking-filter-bar button.active {
+          background: #f6c20d;
+
+          border-color: #f6c20d;
+
+          color: #0b2946;
+
+          font-weight: 700;
+        }
+
+        .booking-table-card {
+          background: white;
+
+          border:
+            1px solid #e2e7ec;
+
+          border-radius: 10px;
+
+          overflow: hidden;
+        }
+
+        .booking-table-wrapper {
+          overflow-x: auto;
+        }
+
+        .passenger-booking-table {
+          width: 100%;
+
+          border-collapse: collapse;
+
+          min-width: 1000px;
+        }
+
+        .passenger-booking-table th {
+          background: #0b2946;
+
+          color: white;
+
+          padding: 13px;
+
+          text-align: left;
+
+          font-size: 9px;
+        }
+
+        .passenger-booking-table td {
+          padding: 14px 13px;
+
+          border-bottom:
+            1px solid #edf0f3;
+
+          color: #53616e;
+
+          font-size: 10px;
+        }
+
+        .booking-id-text {
+          color: #0b2946;
+
+          font-weight: 800;
+        }
+
+        .booking-status {
+          display: inline-block;
+
+          padding: 5px 9px;
+
+          border-radius: 20px;
+
+          font-size: 8px;
+
+          font-weight: 700;
+
+          white-space: nowrap;
+        }
+
+        .booking-status.pending {
+          background: #fff3cd;
+          color: #806400;
+        }
+
+        .booking-status.waiting {
+          background: #fff3cd;
+          color: #806400;
+        }
+
+        .booking-status.accepted {
+          background: #e3effc;
+          color: #24649f;
+        }
+
+        .booking-status.arriving {
+          background: #e7f0ff;
+          color: #245b96;
+        }
+
+        .booking-status.onride {
+          background: #e4e8ff;
+          color: #3f51a3;
+        }
+
+        .booking-status.completed {
+          background: #e3f6e7;
+          color: #18763a;
+        }
+
+        .booking-status.cancelled,
+        .booking-status.rejected {
+          background: #fde7e7;
+          color: #a43c3c;
+        }
+
+        .booking-status.default {
+          background: #edf0f3;
+          color: #53616e;
+        }
+
+        .passenger-booking-view {
+          border:
+            1px solid #0b2946;
+
+          background: white;
+
+          color: #0b2946;
+
+          padding: 6px 10px;
+
+          border-radius: 5px;
+
+          font-size: 8px;
+
+          font-weight: 700;
+
+          cursor: pointer;
+        }
+
+        .passenger-booking-view:hover {
+          background: #0b2946;
+
+          color: white;
+        }
+
+        .booking-loading,
+        .booking-error,
+        .booking-empty {
+          padding: 30px;
+
+          text-align: center;
+
+          font-size: 11px;
+        }
+
+        .booking-loading {
+          color: #607080;
+        }
+
+        .booking-error {
+          color: #a43c3c;
+
+          background: #fff1f1;
+        }
+
+        .booking-empty {
+          color: #7b8794;
+        }
+
+        .booking-modal-overlay {
+          position: fixed;
+
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+
+          z-index: 9999;
+
+          display: flex;
+
+          align-items: center;
+          justify-content: center;
+
+          padding: 20px;
+
+          background:
+            rgba(3, 20, 36, 0.58);
+        }
+
+        .booking-modal {
+          width: 100%;
+
+          max-width: 650px;
+
+          max-height: 90vh;
+
+          overflow-y: auto;
+
+          background: white;
+
+          border-radius: 12px;
+
+          box-shadow:
+            0 18px 45px
+            rgba(0,0,0,0.20);
+        }
+
+        .booking-modal-header {
+          display: flex;
+
+          justify-content:
+            space-between;
+
+          align-items: center;
+
+          gap: 15px;
+
+          padding: 20px 22px;
+
+          background: #0b2946;
+
+          color: white;
+
+          border-radius:
+            12px 12px 0 0;
+        }
+
+        .booking-modal-header h2 {
+          margin: 0;
+
+          font-size: 17px;
+        }
+
+        .booking-modal-close {
+          border: none;
+
+          background: transparent;
+
+          color: white;
+
+          font-size: 24px;
+
+          cursor: pointer;
+        }
+
+        .booking-modal-body {
+          padding: 22px;
+        }
+
+        .booking-detail-grid {
+          display: grid;
+
+          grid-template-columns:
+            repeat(2, 1fr);
+
+          gap: 12px;
+
+          margin-bottom: 22px;
+        }
+
+        .booking-detail-item {
+          padding: 12px;
+
+          background: #f8fafc;
+
+          border:
+            1px solid #e7ebef;
+
+          border-radius: 7px;
+        }
+
+        .booking-detail-item.full {
+          grid-column: 1 / -1;
+        }
+
+        .booking-detail-item span {
+          display: block;
+
+          margin-bottom: 5px;
+
+          color: #8a959f;
+
+          font-size: 8px;
+
+          text-transform:
+            uppercase;
+        }
+
+        .booking-detail-item strong {
+          color: #0b2946;
+
+          font-size: 11px;
+
+          line-height: 1.5;
+        }
+
+        .booking-history-title {
+          margin:
+            5px 0 12px;
+
+          color: #0b2946;
+
+          font-size: 14px;
+        }
+
+        .history-item {
+          position: relative;
+
+          margin-bottom: 10px;
+
+          padding: 11px 12px 11px 16px;
+
+          border-left:
+            3px solid #f6c20d;
+
+          background: #f8fafc;
+
+          border-radius: 4px;
+        }
+
+        .history-item strong {
+          display: block;
+
+          margin-bottom: 4px;
+
+          color: #0b2946;
+
+          font-size: 10px;
+        }
+
+        .history-item span {
+          display: block;
+
+          color: #7b8794;
+
+          font-size: 8px;
+
+          line-height: 1.5;
+        }
+
+        .history-empty {
+          padding: 12px;
+
+          background: #f8fafc;
+
+          color: #7b8794;
+
+          border-radius: 6px;
+
+          font-size: 9px;
+        }
+
+        @media(max-width: 850px) {
+          .booking-summary {
+            grid-template-columns:
+              repeat(2, 1fr);
+          }
+
+          .my-bookings-page {
+            padding: 20px;
+          }
+        }
+
+        @media(max-width: 550px) {
+          .booking-summary,
+          .booking-detail-grid {
+            grid-template-columns:
+              1fr;
+          }
+
+          .booking-detail-item.full {
+            grid-column: auto;
+          }
+        }
+      `}</style>
+
+      <main className="my-bookings-page">
+
+        <h1>My Bookings</h1>
+
+        <p>
+          View your current and previous
+          taxi bookings.
+        </p>
+
+        <div className="booking-summary">
+
+          <div className="booking-summary-card">
+            <span>Total Bookings</span>
+
+            <strong>
+              {bookings.length}
+            </strong>
+          </div>
+
+          <div className="booking-summary-card">
+            <span>Active Bookings</span>
+
+            <strong>
+              {
+                bookings.filter(
+                  (booking) =>
+                    getFilterCategory(
+                      booking.bookingStatus
+                    ) === "Active"
+                ).length
+              }
+            </strong>
+          </div>
+
+          <div className="booking-summary-card">
+            <span>Completed</span>
+
+            <strong>
+              {
+                bookings.filter(
+                  (booking) =>
+                    booking.bookingStatus ===
+                    "COMPLETED"
+                ).length
+              }
+            </strong>
+          </div>
+
+          <div className="booking-summary-card">
+            <span>Cancelled / Rejected</span>
+
+            <strong>
+              {
+                bookings.filter(
+                  (booking) =>
+                    booking.bookingStatus ===
+                      "CANCELLED" ||
+                    booking.bookingStatus ===
+                      "REJECTED"
+                ).length
+              }
+            </strong>
+          </div>
+
+        </div>
+
+        <div className="booking-filter-bar">
+
+          {[
+            "All",
+            "Active",
+            "Completed",
+            "Cancelled",
+            "Rejected",
+          ].map((item) => (
+            <button
+              key={item}
+              type="button"
+              className={
+                filter === item
+                  ? "active"
+                  : ""
+              }
+              onClick={() =>
+                setFilter(item)
+              }
+            >
+              {item}
+            </button>
+          ))}
+
+        </div>
+
+        <div className="booking-table-card">
+
+          {loading ? (
+            <div className="booking-loading">
+              Loading your bookings...
+            </div>
+          ) : error ? (
+            <div className="booking-error">
+              {error}
+            </div>
+          ) : filteredBookings.length ===
+            0 ? (
+            <div className="booking-empty">
+              No bookings found.
+            </div>
+          ) : (
+            <div className="booking-table-wrapper">
+
+              <table className="passenger-booking-table">
+
+                <thead>
+                  <tr>
+                    <th>Booking ID</th>
+                    <th>Date</th>
+                    <th>Pickup</th>
+                    <th>Destination</th>
+                    <th>Vehicle</th>
+                    <th>Driver</th>
+                    <th>Status</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+
+                  {filteredBookings.map(
+                    (booking) => (
+                      <tr
+                        key={
+                          booking.bookingId
+                        }
+                      >
+                        <td>
+                          <span className="booking-id-text">
+                            #
+                            {
+                              booking.bookingId
+                            }
+                          </span>
+                        </td>
+
+                        <td>
+                          {formatDate(
+                            booking.bookingDate
+                          )}
+                        </td>
+
+                        <td>
+                          {
+                            booking.pickupLocation
+                          }
+                        </td>
+
+                        <td>
+                          {
+                            booking.destination
+                          }
+                        </td>
+
+                        <td>
+                          {getVehicleName(
+                            booking.vehicleTypeId
+                          )}
+                        </td>
+
+                        <td>
+                          {getDriverName(
+                            booking.assignedDriverId
+                          )}
+                        </td>
+
+                        <td>
+                          <span
+                            className={`booking-status ${getStatusClass(
+                              booking.bookingStatus
+                            )}`}
+                          >
+                            {formatStatus(
+                              booking.bookingStatus
+                            )}
+                          </span>
+                        </td>
+
+                        <td>
+                          <button
+                            type="button"
+                            className="passenger-booking-view"
+                            onClick={() =>
+                              handleViewBooking(
+                                booking
+                              )
+                            }
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    )
+                  )}
+
+                </tbody>
+
+              </table>
+
+            </div>
+          )}
+
+        </div>
+
+      </main>
+
+      {selectedBooking && (
+        <div
+          className="booking-modal-overlay"
+          onClick={() =>
+            setSelectedBooking(null)
+          }
+        >
+
+          <div
+            className="booking-modal"
+            onClick={(e) =>
+              e.stopPropagation()
+            }
+          >
+
+            <div className="booking-modal-header">
+
+              <h2>
+                Booking #
+                {
+                  selectedBooking.bookingId
+                }
+              </h2>
+
+              <button
+                type="button"
+                className="booking-modal-close"
+                onClick={() =>
+                  setSelectedBooking(null)
+                }
+              >
+                ×
+              </button>
+
+            </div>
+
+            <div className="booking-modal-body">
+
+              <div className="booking-detail-grid">
+
+                <div className="booking-detail-item">
+                  <span>Status</span>
+
+                  <strong>
+                    {formatStatus(
+                      selectedBooking.bookingStatus
+                    )}
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item">
+                  <span>
+                    Booking Source
+                  </span>
+
+                  <strong>
+                    {formatStatus(
+                      selectedBooking.bookingSource
+                    )}
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item full">
+                  <span>
+                    Pickup Location
+                  </span>
+
+                  <strong>
+                    {
+                      selectedBooking.pickupLocation
+                    }
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item full">
+                  <span>
+                    Destination
+                  </span>
+
+                  <strong>
+                    {
+                      selectedBooking.destination
+                    }
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item">
+                  <span>Vehicle</span>
+
+                  <strong>
+                    {getVehicleName(
+                      selectedBooking.vehicleTypeId
+                    )}
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item">
+                  <span>Driver</span>
+
+                  <strong>
+                    {getDriverName(
+                      selectedBooking.assignedDriverId
+                    )}
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item">
+                  <span>Date</span>
+
+                  <strong>
+                    {formatDate(
+                      selectedBooking.bookingDate
+                    )}
+                  </strong>
+                </div>
+
+                <div className="booking-detail-item">
+                  <span>Time</span>
+
+                  <strong>
+                    {formatTime(
+                      selectedBooking.bookingTime
+                    )}
+                  </strong>
+                </div>
+
+              </div>
+
+              <h3 className="booking-history-title">
+                Booking Status History
+              </h3>
+
+              {historyLoading ? (
+                <div className="history-empty">
+                  Loading booking history...
+                </div>
+              ) : bookingHistory.length ===
+                0 ? (
+                <div className="history-empty">
+                  No status history
+                  available.
+                </div>
+              ) : (
+                bookingHistory.map(
+                  (history) => (
+                    <div
+                      className="history-item"
+                      key={
+                        history.historyId
+                      }
+                    >
+                      <strong>
+                        {history.oldStatus
+                          ? `${formatStatus(
+                              history.oldStatus
+                            )} → `
+                          : ""}
+                        {formatStatus(
+                          history.newStatus
+                        )}
+                      </strong>
+
+                      <span>
+                        {history.remarks ||
+                          "Booking status updated"}
+                      </span>
+
+                      <span>
+                        {history.changedAt
+                          ? new Date(
+                              history.changedAt
+                            ).toLocaleString()
+                          : ""}
+                      </span>
+                    </div>
+                  )
+                )
+              )}
+
+            </div>
+
+          </div>
+
+        </div>
+      )}
+    </>
+  );
+}
+
+export default MyBookings;

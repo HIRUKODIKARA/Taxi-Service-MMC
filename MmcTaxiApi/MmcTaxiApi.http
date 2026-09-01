@@ -1,0 +1,6 @@
+@MmcTaxiApi_HostAddress = http://localhost:5171
+
+GET {{MmcTaxiApi_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+# .NET build files
+MmcTaxiApi/bin/
+MmcTaxiApi/obj/
+
+# Uploaded driver documents
+MmcTaxiApi/Uploads/
+
+# Local backend secrets
+MmcTaxiApi/appsettings.json
