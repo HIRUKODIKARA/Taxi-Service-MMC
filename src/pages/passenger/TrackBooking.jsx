@@ -64,6 +64,7 @@ function TrackBooking() {
   };
 
   const user = getStoredUser();
+  const API_BASE_URL = "http://localhost:5171/api";
 
   const formatStatus = (status) => {
     if (!status) {
@@ -101,7 +102,9 @@ function TrackBooking() {
 
   const loadTrackingData =
     async (showMainLoading = true) => {
-      if (!user) {
+      const token = getToken();
+
+      if (!token) {
         setError(
           "Please login to track your booking."
         );
@@ -120,26 +123,34 @@ function TrackBooking() {
 
         const bookingsResponse =
           await fetch(
-            "http://localhost:5171/api/bookings",
+            `${API_BASE_URL}/bookings/my`,
             {
               headers: getHeaders(),
             }
           );
 
         if (!bookingsResponse.ok) {
+          let errorData = null;
+
+          try {
+            errorData =
+              await bookingsResponse.json();
+          } catch {
+            errorData = null;
+          }
+
           throw new Error(
-            "Unable to load bookings."
+            errorData?.message ||
+              "Unable to load your bookings."
           );
         }
 
-        const allBookings =
+        const myBookings =
           await bookingsResponse.json();
 
         const passengerBookings =
-          allBookings.filter(
+          myBookings.filter(
             (item) =>
-              Number(item.passengerId) ===
-                Number(user.userId) &&
               [
                 "ACCEPTED",
                 "DRIVER_ARRIVING",
@@ -190,123 +201,42 @@ function TrackBooking() {
           return;
         }
 
-        const [
-          driversResponse,
-          usersResponse,
-          vehiclesResponse,
-          vehicleTypesResponse,
-        ] = await Promise.all([
-          fetch(
-            "http://localhost:5171/api/drivers",
+        setDriver(null);
+        setDriverUser(null);
+        setVehicle(null);
+        setVehicleType(null);
+
+        // Passenger tracking intentionally avoids global users,
+        // drivers and vehicles list endpoints. Booking and location
+        // access are restricted by the backend to the logged-in user.
+        const vehicleTypesResponse =
+          await fetch(
+            `${API_BASE_URL}/vehicletypes`,
             {
               headers: getHeaders(),
             }
-          ),
-
-          fetch(
-            "http://localhost:5171/api/users",
-            {
-              headers: getHeaders(),
-            }
-          ),
-
-          fetch(
-            "http://localhost:5171/api/vehicles",
-            {
-              headers: getHeaders(),
-            }
-          ),
-
-          fetch(
-            "http://localhost:5171/api/vehicletypes",
-            {
-              headers: getHeaders(),
-            }
-          ),
-        ]);
-
-        const driversData =
-          driversResponse.ok
-            ? await driversResponse.json()
-            : [];
-
-        const usersData =
-          usersResponse.ok
-            ? await usersResponse.json()
-            : [];
-
-        const vehiclesData =
-          vehiclesResponse.ok
-            ? await vehiclesResponse.json()
-            : [];
+          );
 
         const vehicleTypesData =
           vehicleTypesResponse.ok
             ? await vehicleTypesResponse.json()
             : [];
 
-        const assignedDriver =
-          driversData.find(
+        const matchedVehicleType =
+          vehicleTypesData.find(
             (item) =>
-              Number(item.driverId) ===
-              Number(
-                activeBooking.assignedDriverId
-              )
+              Number(item.vehicleTypeId) ===
+              Number(activeBooking.vehicleTypeId)
           );
 
-        setDriver(
-          assignedDriver || null
+        setVehicleType(
+          matchedVehicleType || null
         );
-
-        if (assignedDriver) {
-          const assignedDriverUser =
-            usersData.find(
-              (item) =>
-                Number(item.userId) ===
-                Number(
-                  assignedDriver.userId
-                )
-            );
-
-          setDriverUser(
-            assignedDriverUser || null
-          );
-        }
-
-        const assignedVehicle =
-          vehiclesData.find(
-            (item) =>
-              Number(item.vehicleId) ===
-              Number(
-                activeBooking.assignedVehicleId
-              )
-          );
-
-        setVehicle(
-          assignedVehicle || null
-        );
-
-        if (assignedVehicle) {
-          const matchedVehicleType =
-            vehicleTypesData.find(
-              (item) =>
-                Number(
-                  item.vehicleTypeId
-                ) ===
-                Number(
-                  assignedVehicle.vehicleTypeId
-                )
-            );
-
-          setVehicleType(
-            matchedVehicleType || null
-          );
-        }
 
         try {
           const locationResponse =
             await fetch(
-              `http://localhost:5171/api/driverlocations/driver/${activeBooking.assignedDriverId}/latest`,
+              `${API_BASE_URL}/driverlocations/driver/${activeBooking.assignedDriverId}/latest`,
               {
                 headers:
                   getHeaders(),
@@ -859,8 +789,9 @@ function TrackBooking() {
                 </span>
 
                 <strong>
-                  {driverUser?.fullName ||
-                    "Assigned Driver"}
+                  {booking.assignedDriverId
+                    ? `Driver #${booking.assignedDriverId}`
+                    : "Assigned Driver"}
                 </strong>
               </div>
 
@@ -870,8 +801,7 @@ function TrackBooking() {
                 </span>
 
                 <strong>
-                  {driverUser?.phone ||
-                    "—"}
+                  {"Available through Taxi Operations"}
                 </strong>
               </div>
 
@@ -892,8 +822,9 @@ function TrackBooking() {
                 </span>
 
                 <strong>
-                  {vehicle?.registrationNumber ||
-                    "—"}
+                  {booking.assignedVehicleId
+                    ? `Vehicle #${booking.assignedVehicleId}`
+                    : "—"}
                 </strong>
               </div>
 

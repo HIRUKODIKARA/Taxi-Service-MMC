@@ -44,6 +44,7 @@ function BookTaxi() {
   };
 
   const user = getStoredUser();
+  const API_BASE_URL = "http://localhost:5171/api";
 
   useEffect(() => {
     const loadVehicleTypes = async () => {
@@ -51,7 +52,7 @@ function BookTaxi() {
         setLoadingVehicles(true);
 
         const response = await fetch(
-          "http://localhost:5171/api/vehicletypes"
+          `${API_BASE_URL}/vehicletypes`
         );
 
         if (!response.ok) {
@@ -103,7 +104,9 @@ function BookTaxi() {
     setError("");
     setConfirmation(null);
 
-    if (!user) {
+    const token = getToken();
+
+    if (!token) {
       setError(
         "Please login to your passenger account before creating a booking."
       );
@@ -127,42 +130,22 @@ function BookTaxi() {
     setLoading(true);
 
     try {
-      const token = getToken();
-
       const bookingData = {
-        passengerId: user.userId,
-        passengerName: user.fullName,
-        passengerPhone: user.phone,
-        bookingSource: "WEBSITE",
-
         pickupLocation: formData.pickup.trim(),
         destination: formData.destination.trim(),
-
         bookingDate: formData.date,
         bookingTime: `${formData.time}:00`,
-
         vehicleTypeId: Number(formData.vehicleTypeId),
-
-        assignedDriverId: null,
-        assignedVehicleId: null,
-
-        bookingStatus: "WAITING_FOR_DRIVER",
-
-        createdByUserId: user.userId,
       };
 
       const response = await fetch(
-        "http://localhost:5171/api/bookings",
+        `${API_BASE_URL}/bookings`,
         {
           method: "POST",
 
           headers: {
             "Content-Type": "application/json",
-            ...(token
-              ? {
-                  Authorization: `Bearer ${token}`,
-                }
-              : {}),
+            Authorization: `Bearer ${token}`,
           },
 
           body: JSON.stringify(bookingData),
@@ -210,7 +193,7 @@ function BookTaxi() {
         status:
           createdBooking.bookingStatus ||
           createdBooking.BookingStatus ||
-          "WAITING_FOR_DRIVER",
+          "PENDING",
       });
 
       setFormData((previousData) => ({

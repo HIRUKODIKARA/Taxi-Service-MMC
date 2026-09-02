@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 function DriverNotifications() {
+  const API_BASE_URL = "http://localhost:5171/api";
   const [notifications, setNotifications] =
     useState([]);
 
@@ -80,7 +81,7 @@ function DriverNotifications() {
         setError("");
 
         const response = await fetch(
-          `http://localhost:5171/api/notifications/user/${user.userId}`,
+          `${API_BASE_URL}/notifications/me`,
           {
             headers: getHeaders(),
           }
@@ -130,7 +131,7 @@ function DriverNotifications() {
         setError("");
 
         const response = await fetch(
-          `http://localhost:5171/api/notifications/${notificationId}/read`,
+          `${API_BASE_URL}/notifications/${notificationId}/read`,
           {
             method: "PUT",
 
@@ -184,7 +185,7 @@ function DriverNotifications() {
         setError("");
 
         const response = await fetch(
-          `http://localhost:5171/api/notifications/user/${user.userId}/read-all`,
+          `${API_BASE_URL}/notifications/me/read-all`,
           {
             method: "PUT",
 

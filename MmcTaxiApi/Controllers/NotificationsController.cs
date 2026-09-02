@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 
 namespace MmcTaxiApi.Controllers
@@ -34,6 +35,33 @@ namespace MmcTaxiApi.Controllers
             return userId;
         }
 
+        private async Task<bool> HasPermissionAsync(
+            string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+            {
+                return true;
+            }
+
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return false;
+            }
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         // =========================================================
         // GET: api/notifications
         //
@@ -41,7 +69,7 @@ namespace MmcTaxiApi.Controllers
         // Full system notification list
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("MANAGE_NOTIFICATIONS")]
         public async Task<ActionResult> GetNotifications()
         {
             var notifications = await _context.Notifications
@@ -67,6 +95,7 @@ namespace MmcTaxiApi.Controllers
         // Any logged-in user gets ONLY own notifications
         // =========================================================
         [HttpGet("me")]
+        [HasPermission("VIEW_NOTIFICATIONS")]
         public async Task<ActionResult> GetMyNotifications()
         {
             var currentUserId = GetCurrentUserId();
@@ -103,6 +132,7 @@ namespace MmcTaxiApi.Controllers
         // Any logged-in user gets ONLY own unread notifications
         // =========================================================
         [HttpGet("me/unread")]
+        [HasPermission("VIEW_NOTIFICATIONS")]
         public async Task<ActionResult> GetMyUnreadNotifications()
         {
             var currentUserId = GetCurrentUserId();
@@ -141,6 +171,7 @@ namespace MmcTaxiApi.Controllers
         // Useful for navbar notification badge
         // =========================================================
         [HttpGet("me/unread-count")]
+        [HasPermission("VIEW_NOTIFICATIONS")]
         public async Task<ActionResult> GetMyUnreadCount()
         {
             var currentUserId = GetCurrentUserId();
@@ -170,7 +201,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpGet("user/{userId}")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("MANAGE_NOTIFICATIONS")]
         public async Task<ActionResult> GetUserNotifications(
             int userId)
         {
@@ -209,7 +240,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpGet("user/{userId}/unread")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("MANAGE_NOTIFICATIONS")]
         public async Task<ActionResult> GetUnreadNotifications(
             int userId)
         {
@@ -275,17 +306,26 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            var isAdmin =
-                User.IsInRole("SUPER_ADMIN") ||
-                User.IsInRole("ADMIN");
+            var canManageNotifications =
+                await HasPermissionAsync("MANAGE_NOTIFICATIONS");
 
             if (notification.UserId != currentUserId.Value &&
-                !isAdmin)
+                !canManageNotifications)
             {
                 return StatusCode(403, new
                 {
                     message =
                         "You do not have permission to update this notification."
+                });
+            }
+
+            if (notification.UserId == currentUserId.Value &&
+                !await HasPermissionAsync("VIEW_NOTIFICATIONS"))
+            {
+                return StatusCode(403, new
+                {
+                    message =
+                        "You do not have permission to view notifications."
                 });
             }
 
@@ -320,6 +360,7 @@ namespace MmcTaxiApi.Controllers
         // Logged-in user marks ONLY own notifications as read.
         // =========================================================
         [HttpPut("me/read-all")]
+        [HasPermission("VIEW_NOTIFICATIONS")]
         public async Task<IActionResult> MarkMyNotificationsAsRead()
         {
             var currentUserId = GetCurrentUserId();
@@ -369,7 +410,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpPut("user/{userId}/read-all")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("MANAGE_NOTIFICATIONS")]
         public async Task<IActionResult> MarkAllAsRead(
             int userId)
         {

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -28,6 +29,27 @@ namespace MmcTaxiApi.Controllers
         private bool IsOperationsUser() =>
             User.IsInRole("SUPER_ADMIN") || User.IsInRole("ADMIN") || User.IsInRole("TAXI_OPERATIONS");
 
+        private async Task<bool> HasPermissionAsync(string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+                return true;
+
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == null)
+                return false;
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         private async Task<Driver?> GetCurrentDriverAsync()
         {
             var userId = GetCurrentUserId();
@@ -39,12 +61,25 @@ namespace MmcTaxiApi.Controllers
         {
             var userId = GetCurrentUserId();
             if (userId == null) return false;
-            if (IsOperationsUser()) return true;
-            if (User.IsInRole("PASSENGER") && booking.PassengerId == userId.Value) return true;
+            if (IsOperationsUser() &&
+                await HasPermissionAsync("VIEW_BOOKINGS"))
+            {
+                return true;
+            }
+
+            if (User.IsInRole("PASSENGER") &&
+                booking.PassengerId == userId.Value &&
+                await HasPermissionAsync("VIEW_BOOKINGS"))
+            {
+                return true;
+            }
             if (User.IsInRole("DRIVER") && booking.AssignedDriverId != null)
             {
                 var driver = await GetCurrentDriverAsync();
-                return driver != null && booking.AssignedDriverId == driver.DriverId;
+
+                return driver != null &&
+                       booking.AssignedDriverId == driver.DriverId &&
+                       await HasPermissionAsync("VIEW_TRIP_REQUESTS");
             }
             return false;
         }
@@ -53,7 +88,7 @@ namespace MmcTaxiApi.Controllers
         // GET: api/bookings
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("VIEW_BOOKINGS")]
         public async Task<ActionResult<IEnumerable<Booking>>> GetBookings()
         {
             var bookings = await _context.Bookings
@@ -82,14 +117,33 @@ namespace MmcTaxiApi.Controllers
 
             if (User.IsInRole("DRIVER"))
             {
+                if (!await HasPermissionAsync("VIEW_TRIP_REQUESTS"))
+                {
+                    return StatusCode(403, new
+                    {
+                        message = "You do not have VIEW_TRIP_REQUESTS permission."
+                    });
+                }
+
                 var driver = await GetCurrentDriverAsync();
-                if (driver == null) return NotFound(new { message = "Driver profile not found." });
-                var items = await _context.Bookings.Where(b => b.AssignedDriverId == driver.DriverId)
-                    .OrderByDescending(b => b.CreatedAt).ToListAsync();
+
+                if (driver == null)
+                {
+                    return NotFound(new
+                    {
+                        message = "Driver profile not found."
+                    });
+                }
+
+                var items = await _context.Bookings
+                    .Where(b => b.AssignedDriverId == driver.DriverId)
+                    .OrderByDescending(b => b.CreatedAt)
+                    .ToListAsync();
+
                 return Ok(items);
             }
 
-            if (IsOperationsUser())
+            if (await HasPermissionAsync("VIEW_BOOKINGS"))
             {
                 return Ok(await _context.Bookings.OrderByDescending(b => b.CreatedAt).ToListAsync());
             }
@@ -141,72 +195,58 @@ namespace MmcTaxiApi.Controllers
 
         // =========================================================
         // POST: api/bookings
+        //
+        // PASSENGER:
+        //   Frontend sends only journey details.
+        //   Passenger identity/name/phone/source are taken securely
+        //   from the logged-in JWT user.
+        //
+        // OPERATIONS / ADMIN:
+        //   Can also create PHONE / ON_SITE bookings and provide
+        //   passenger details explicitly.
         // =========================================================
         [HttpPost]
         public async Task<ActionResult<Booking>> CreateBooking(
-            Booking booking)
+            [FromBody] CreateBookingRequest request)
         {
             var currentUserId = GetCurrentUserId();
-            if (currentUserId == null) return Unauthorized(new { message = "Unable to identify logged-in user." });
 
-            // Passenger may create WEBSITE bookings only, for self.
-            if (User.IsInRole("PASSENGER") && !IsOperationsUser())
+            if (currentUserId == null)
             {
-                booking.PassengerId = currentUserId.Value;
-                booking.CreatedByUserId = currentUserId.Value;
-                booking.BookingSource = "WEBSITE";
-
-                var passenger = await _context.Users.FirstOrDefaultAsync(u => u.UserId == currentUserId.Value && u.AccountStatus == "ACTIVE");
-                if (passenger == null) return BadRequest(new { message = "Passenger account is not active." });
-                booking.PassengerName = passenger.FullName;
-                booking.PassengerPhone = passenger.Phone ?? booking.PassengerPhone;
-            }
-            else if (IsOperationsUser())
-            {
-                booking.CreatedByUserId = currentUserId.Value;
-            }
-            else
-            {
-                return StatusCode(403, new { message = "You do not have permission to create bookings." });
-            }
-
-            if (string.IsNullOrWhiteSpace(booking.PassengerName) ||
-                string.IsNullOrWhiteSpace(booking.PassengerPhone) ||
-                string.IsNullOrWhiteSpace(booking.PickupLocation) ||
-                string.IsNullOrWhiteSpace(booking.Destination))
-            {
-                return BadRequest(new
+                return Unauthorized(new
                 {
-                    message =
-                        "Passenger name, phone, pickup location and destination are required."
+                    message = "Unable to identify logged-in user."
                 });
             }
 
-            var validSources = new[]
+            if (!await HasPermissionAsync("CREATE_BOOKING"))
             {
-                "WEBSITE",
-                "PHONE",
-                "ON_SITE"
-            };
+                return StatusCode(403, new
+                {
+                    message = "You do not have CREATE_BOOKING permission."
+                });
+            }
 
-            var source = string.IsNullOrWhiteSpace(booking.BookingSource)
-                ? "WEBSITE"
-                : booking.BookingSource.Trim().ToUpperInvariant();
-
-            if (User.IsInRole("PASSENGER") && source != "WEBSITE")
-                return StatusCode(403, new { message = "Passengers can create WEBSITE bookings only." });
-
-            if (!validSources.Contains(source))
+            if (string.IsNullOrWhiteSpace(request.PickupLocation) ||
+                string.IsNullOrWhiteSpace(request.Destination))
             {
                 return BadRequest(new
                 {
-                    message = "Invalid booking source."
+                    message = "Pickup location and destination are required."
+                });
+            }
+
+            if (request.VehicleTypeId <= 0)
+            {
+                return BadRequest(new
+                {
+                    message = "A valid vehicle type is required."
                 });
             }
 
             var vehicleTypeExists = await _context.VehicleTypes
                 .AnyAsync(v =>
-                    v.VehicleTypeId == booking.VehicleTypeId &&
+                    v.VehicleTypeId == request.VehicleTypeId &&
                     v.Status == "ACTIVE");
 
             if (!vehicleTypeExists)
@@ -218,33 +258,146 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (booking.PassengerId != null)
+            var booking = new Booking
             {
-                var passengerExists = await _context.Users
-                    .AnyAsync(u =>
-                        u.UserId == booking.PassengerId.Value &&
+                BookingId = 0,
+
+                PickupLocation = request.PickupLocation.Trim(),
+                Destination = request.Destination.Trim(),
+
+                BookingDate = request.BookingDate,
+                BookingTime = request.BookingTime,
+
+                VehicleTypeId = request.VehicleTypeId,
+
+                AssignedDriverId = null,
+                AssignedVehicleId = null,
+
+                BookingStatus = "PENDING",
+
+                CreatedByUserId = currentUserId.Value,
+
+                CreatedAt = DateTime.Now,
+                UpdatedAt = DateTime.Now
+            };
+
+            // ---------------------------------------------------------
+            // Passenger website booking:
+            // derive passenger identity from JWT / database.
+            // ---------------------------------------------------------
+            if (User.IsInRole("PASSENGER") && !IsOperationsUser())
+            {
+                var passenger = await _context.Users
+                    .FirstOrDefaultAsync(u =>
+                        u.UserId == currentUserId.Value &&
                         u.AccountStatus == "ACTIVE");
 
-                if (!passengerExists)
+                if (passenger == null)
+                {
+                    return BadRequest(new
+                    {
+                        message = "Passenger account is not active."
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(passenger.FullName) ||
+                    string.IsNullOrWhiteSpace(passenger.Phone))
                 {
                     return BadRequest(new
                     {
                         message =
-                            "Passenger account does not exist or is inactive."
+                            "Your passenger profile must contain a name and phone number before booking."
                     });
                 }
+
+                booking.PassengerId = passenger.UserId;
+                booking.PassengerName = passenger.FullName.Trim();
+                booking.PassengerPhone = passenger.Phone.Trim();
+                booking.BookingSource = "WEBSITE";
+            }
+            // ---------------------------------------------------------
+            // Taxi Operator / Admin / Super Admin booking:
+            // PHONE or ON_SITE passenger details can be supplied.
+            // ---------------------------------------------------------
+            else if (await HasPermissionAsync("MANAGE_BOOKINGS"))
+            {
+                var source = string.IsNullOrWhiteSpace(request.BookingSource)
+                    ? "PHONE"
+                    : request.BookingSource.Trim().ToUpperInvariant();
+
+                var validSources = new[]
+                {
+                    "WEBSITE",
+                    "PHONE",
+                    "ON_SITE"
+                };
+
+                if (!validSources.Contains(source))
+                {
+                    return BadRequest(new
+                    {
+                        message = "Invalid booking source."
+                    });
+                }
+
+                if (request.PassengerId != null)
+                {
+                    var passenger = await _context.Users
+                        .FirstOrDefaultAsync(u =>
+                            u.UserId == request.PassengerId.Value &&
+                            u.AccountStatus == "ACTIVE");
+
+                    if (passenger == null)
+                    {
+                        return BadRequest(new
+                        {
+                            message =
+                                "Passenger account does not exist or is inactive."
+                        });
+                    }
+
+                    booking.PassengerId = passenger.UserId;
+                    booking.PassengerName =
+                        string.IsNullOrWhiteSpace(request.PassengerName)
+                            ? passenger.FullName
+                            : request.PassengerName.Trim();
+
+                    booking.PassengerPhone =
+                        string.IsNullOrWhiteSpace(request.PassengerPhone)
+                            ? passenger.Phone ?? string.Empty
+                            : request.PassengerPhone.Trim();
+                }
+                else
+                {
+                    booking.PassengerId = null;
+                    booking.PassengerName =
+                        request.PassengerName?.Trim() ?? string.Empty;
+                    booking.PassengerPhone =
+                        request.PassengerPhone?.Trim() ?? string.Empty;
+                }
+
+                if (string.IsNullOrWhiteSpace(booking.PassengerName) ||
+                    string.IsNullOrWhiteSpace(booking.PassengerPhone))
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "Passenger name and phone are required for phone/on-site bookings."
+                    });
+                }
+
+                booking.BookingSource = source;
+            }
+            else
+            {
+                return StatusCode(403, new
+                {
+                    message =
+                        "You do not have permission to create bookings."
+                });
             }
 
-            booking.BookingId = 0;
-            booking.BookingSource = source;
-
-            // Website / Phone / Counter bookings first wait
-            // for Taxi Operations / driver assignment workflow.
-            booking.BookingStatus = "PENDING";
-
-            booking.AssignedDriverId = null;
-            booking.AssignedVehicleId = null;
-
+            // If the frontend did not send date/time, use current values.
             if (booking.BookingDate == null)
             {
                 booking.BookingDate = DateTime.Today;
@@ -254,9 +407,6 @@ namespace MmcTaxiApi.Controllers
             {
                 booking.BookingTime = DateTime.Now.TimeOfDay;
             }
-
-            booking.CreatedAt = DateTime.Now;
-            booking.UpdatedAt = DateTime.Now;
 
             await using var transaction =
                 await _context.Database.BeginTransactionAsync();
@@ -311,7 +461,7 @@ namespace MmcTaxiApi.Controllers
         // Taxi Operations assigns driver + vehicle
         // =========================================================
         [HttpPut("{id}/assign")]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("ASSIGN_DRIVER")]
         public async Task<IActionResult> AssignBooking(
             int id,
             [FromBody] AssignBookingRequest request)
@@ -518,7 +668,7 @@ namespace MmcTaxiApi.Controllers
         // PUT: api/bookings/1/accept
         // =========================================================
         [HttpPut("{id}/accept")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("ACCEPT_TRIP")]
         public async Task<IActionResult> AcceptBooking(int id)
         {
             var booking = await _context.Bookings.FindAsync(id);
@@ -652,7 +802,7 @@ namespace MmcTaxiApi.Controllers
         // PUT: api/bookings/1/reject
         // =========================================================
         [HttpPut("{id}/reject")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("REJECT_TRIP")]
         public async Task<IActionResult> RejectBooking(int id)
         {
             var booking = await _context.Bookings.FindAsync(id);
@@ -741,7 +891,7 @@ namespace MmcTaxiApi.Controllers
         // PUT: api/bookings/1/arriving
         // =========================================================
         [HttpPut("{id}/arriving")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("UPDATE_TRIP_STATUS")]
         public async Task<IActionResult> DriverArriving(int id)
         {
             var booking = await _context.Bookings.FindAsync(id);
@@ -825,7 +975,7 @@ namespace MmcTaxiApi.Controllers
         // PUT: api/bookings/1/start
         // =========================================================
         [HttpPut("{id}/start")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("UPDATE_TRIP_STATUS")]
         public async Task<IActionResult> StartRide(int id)
         {
             var booking = await _context.Bookings.FindAsync(id);
@@ -934,7 +1084,7 @@ namespace MmcTaxiApi.Controllers
         // PUT: api/bookings/1/complete
         // =========================================================
         [HttpPut("{id}/complete")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("UPDATE_TRIP_STATUS")]
         public async Task<IActionResult> CompleteRide(int id)
         {
             var booking = await _context.Bookings.FindAsync(id);
@@ -1049,9 +1199,19 @@ namespace MmcTaxiApi.Controllers
             var booking = await _context.Bookings.FindAsync(id);
             if (booking == null) return NotFound(new { message = "Booking not found." });
 
-            var ownPassenger = User.IsInRole("PASSENGER") && booking.PassengerId == userId.Value;
-            if (!ownPassenger && !IsOperationsUser())
-                return StatusCode(403, new { message = "You do not have permission to cancel this booking." });
+            var ownPassenger =
+                User.IsInRole("PASSENGER") &&
+                booking.PassengerId == userId.Value;
+
+            if (!ownPassenger &&
+                !await HasPermissionAsync("MANAGE_BOOKINGS"))
+            {
+                return StatusCode(403, new
+                {
+                    message =
+                        "You do not have MANAGE_BOOKINGS permission."
+                });
+            }
 
             var cancellable = new[] { "PENDING", "WAITING_FOR_DRIVER", "ACCEPTED" };
             if (!cancellable.Contains(booking.BookingStatus))
@@ -1151,6 +1311,30 @@ namespace MmcTaxiApi.Controllers
                 .Select(d => (int?)d.UserId)
                 .FirstOrDefaultAsync();
         }
+    }
+
+    public class CreateBookingRequest
+    {
+        // Website passenger booking fields
+        public string PickupLocation { get; set; } = string.Empty;
+
+        public string Destination { get; set; } = string.Empty;
+
+        public DateTime? BookingDate { get; set; }
+
+        public TimeSpan? BookingTime { get; set; }
+
+        public int VehicleTypeId { get; set; }
+
+        // Optional fields used by Taxi Operator / Admin for
+        // PHONE / ON_SITE bookings.
+        public int? PassengerId { get; set; }
+
+        public string? PassengerName { get; set; }
+
+        public string? PassengerPhone { get; set; }
+
+        public string? BookingSource { get; set; }
     }
 
     public class AssignBookingRequest

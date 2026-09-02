@@ -1,6 +1,36 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+const API_BASE_URL = "http://localhost:5171/api";
+
+/* =========================================================
+   ROLE DASHBOARD
+========================================================= */
+
+const getDashboardByRoles = (roles = []) => {
+  if (roles.includes("SUPER_ADMIN")) {
+    return "/super-admin/dashboard";
+  }
+
+  if (roles.includes("ADMIN")) {
+    return "/admin/dashboard";
+  }
+
+  if (roles.includes("TAXI_OPERATIONS")) {
+    return "/operations/dashboard";
+  }
+
+  if (roles.includes("DRIVER")) {
+    return "/driver/dashboard";
+  }
+
+  if (roles.includes("PASSENGER")) {
+    return "/passenger/dashboard";
+  }
+
+  return "/";
+};
+
 function Login() {
   const navigate = useNavigate();
 
@@ -8,89 +38,194 @@ function Login() {
   const [password, setPassword] = useState("");
   const [rememberMe, setRememberMe] = useState(false);
 
+  const [showPassword, setShowPassword] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("");
 
+  /* =========================================================
+     LOGIN
+  ========================================================= */
+
   const handleLogin = async (e) => {
     e.preventDefault();
+
+    if (loading) return;
 
     setLoading(true);
     setMessage("");
     setMessageType("");
 
     try {
-      const response = await fetch("http://localhost:5171/api/auth/login", {
+      const response = await fetch(`${API_BASE_URL}/auth/login`, {
         method: "POST",
+
         headers: {
           "Content-Type": "application/json",
         },
+
         body: JSON.stringify({
-          email: email,
-          password: password,
+          email: email.trim(),
+          password,
         }),
       });
 
-      const data = await response.json();
+      const raw = await response.text();
+
+      let data = {};
+
+      if (raw) {
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = {
+            message: raw,
+          };
+        }
+      }
 
       if (!response.ok) {
-        setMessage(data.message || "Login failed.");
-        setMessageType("error");
-        return;
+        throw new Error(
+          data?.message ||
+            "Login failed. Please check your email and password."
+        );
       }
 
-      const storage = rememberMe ? localStorage : sessionStorage;
-
-      storage.setItem("token", data.token);
-      storage.setItem("user", JSON.stringify(data.user));
-
-      // Clear old login data from the other storage
-      if (rememberMe) {
-        sessionStorage.removeItem("token");
-        sessionStorage.removeItem("user");
-      } else {
-        localStorage.removeItem("token");
-        localStorage.removeItem("user");
+      if (!data?.token) {
+        throw new Error(
+          "Login token was not received from the server."
+        );
       }
+
+      if (!data?.user) {
+        throw new Error(
+          "User information was not received from the server."
+        );
+      }
+
+      /* ===============================================
+         NORMALIZE ROLES
+      =============================================== */
+
+      let roles = [];
+
+      if (Array.isArray(data.user.roles)) {
+        roles = data.user.roles;
+      } else if (data.user.role) {
+        roles = [data.user.role];
+      } else if (data.user.roleName) {
+        roles = [data.user.roleName];
+      }
+
+      roles = roles
+        .filter(Boolean)
+        .map((role) => role.toString().trim().toUpperCase());
+
+      const normalizedUser = {
+        ...data.user,
+        roles,
+      };
+
+      /* ===============================================
+         STORAGE
+      =============================================== */
+
+      const selectedStorage = rememberMe
+        ? localStorage
+        : sessionStorage;
+
+      const otherStorage = rememberMe
+        ? sessionStorage
+        : localStorage;
+
+      /*
+        Remove previous login information first.
+        This prevents an old account from interfering
+        with the newly logged-in account.
+      */
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("authToken");
+      localStorage.removeItem("accessToken");
+      localStorage.removeItem("user");
+
+      sessionStorage.removeItem("token");
+      sessionStorage.removeItem("authToken");
+      sessionStorage.removeItem("accessToken");
+      sessionStorage.removeItem("user");
+
+      /*
+        Save the new authenticated account.
+      */
+
+      selectedStorage.setItem("token", data.token);
+
+      selectedStorage.setItem(
+        "user",
+        JSON.stringify(normalizedUser)
+      );
+
+      /*
+        Extra cleanup in the opposite storage.
+      */
+
+      otherStorage.removeItem("token");
+      otherStorage.removeItem("authToken");
+      otherStorage.removeItem("accessToken");
+      otherStorage.removeItem("user");
+
+      /* ===============================================
+         ROLE VALIDATION
+      =============================================== */
+
+      if (roles.length === 0) {
+        selectedStorage.removeItem("token");
+        selectedStorage.removeItem("user");
+
+        throw new Error(
+          "Your account does not have a valid system role."
+        );
+      }
+
+      const dashboard = getDashboardByRoles(roles);
 
       setMessage("Login successful. Redirecting...");
       setMessageType("success");
 
-      const roles = data.user?.roles || [];
+      /*
+        Small delay only to display success message.
+      */
 
       setTimeout(() => {
-        if (roles.includes("SUPER_ADMIN")) {
-          navigate("/super-admin/dashboard");
-        } else if (
-          roles.includes("TAXI_OPERATIONS") ||
-          roles.includes("ADMIN")
-        ) {
-          navigate("/operations/dashboard");
-        } else if (roles.includes("DRIVER")) {
-          navigate("/driver/dashboard");
-        } else if (roles.includes("PASSENGER")) {
-          navigate("/passenger/dashboard");
-        } else {
-          navigate("/");
-        }
-      }, 600);
+        navigate(dashboard, {
+          replace: true,
+        });
+      }, 400);
     } catch (error) {
       console.error("Login error:", error);
 
       setMessage(
-        "Cannot connect to the server. Please make sure the backend is running."
+        error?.message ||
+          "Cannot connect to the server. Please make sure the backend is running."
       );
+
       setMessageType("error");
     } finally {
       setLoading(false);
     }
   };
 
+  /* =========================================================
+     UI
+  ========================================================= */
+
   return (
     <>
       <style>{`
         .login-page {
           min-height: calc(100vh - 88px);
+
           background: #f4f7fa;
 
           display: flex;
@@ -169,7 +304,38 @@ function Login() {
         .login-field input:focus {
           border-color: #f6c20d;
 
-          box-shadow: 0 0 0 3px rgba(246,194,13,0.12);
+          box-shadow: 0 0 0 3px rgba(246, 194, 13, 0.12);
+        }
+
+        .password-wrapper {
+          position: relative;
+        }
+
+        .password-wrapper input {
+          padding-right: 72px;
+        }
+
+        .show-password-btn {
+          position: absolute;
+
+          top: 50%;
+          right: 10px;
+
+          transform: translateY(-50%);
+
+          border: none;
+          background: transparent;
+
+          color: #0b2946;
+
+          font-size: 11px;
+          font-weight: 700;
+
+          cursor: pointer;
+        }
+
+        .show-password-btn:hover {
+          color: #d5a000;
         }
 
         .login-options {
@@ -190,6 +356,8 @@ function Login() {
           color: #5c6976;
 
           font-size: 11px;
+
+          cursor: pointer;
         }
 
         .remember-me input {
@@ -230,12 +398,13 @@ function Login() {
           transition: 0.2s;
         }
 
-        .login-submit-btn:hover {
+        .login-submit-btn:hover:not(:disabled) {
           background: #e3b300;
         }
 
         .login-submit-btn:disabled {
           opacity: 0.65;
+
           cursor: not-allowed;
         }
 
@@ -252,13 +421,17 @@ function Login() {
 
         .login-message.success {
           background: #edf9f0;
+
           border: 1px solid #b8e2c1;
+
           color: #276638;
         }
 
         .login-message.error {
           background: #fff1f1;
+
           border: 1px solid #efc1c1;
+
           color: #a63737;
         }
 
@@ -298,6 +471,7 @@ function Login() {
 
         .login-register-actions {
           display: grid;
+
           grid-template-columns: 1fr 1fr;
 
           gap: 10px;
@@ -352,6 +526,7 @@ function Login() {
 
           .login-options {
             flex-direction: column;
+
             align-items: flex-start;
           }
 
@@ -363,6 +538,7 @@ function Login() {
 
       <main className="login-page">
         <div className="login-card">
+
           <h1>Welcome Back</h1>
 
           <p className="login-subtitle">
@@ -370,12 +546,17 @@ function Login() {
           </p>
 
           {message && (
-            <div className={`login-message ${messageType}`}>
+            <div
+              className={`login-message ${messageType}`}
+            >
               {message}
             </div>
           )}
 
           <form onSubmit={handleLogin}>
+
+            {/* EMAIL */}
+
             <div className="login-field">
               <label>Email</label>
 
@@ -383,32 +564,74 @@ function Login() {
                 type="email"
                 placeholder="Enter email address"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) =>
+                  setEmail(e.target.value)
+                }
+                autoComplete="email"
+                disabled={loading}
                 required
               />
             </div>
+
+            {/* PASSWORD */}
 
             <div className="login-field">
               <label>Password</label>
 
-              <input
-                type="password"
-                placeholder="Enter password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="password-wrapper">
+
+                <input
+                  type={
+                    showPassword
+                      ? "text"
+                      : "password"
+                  }
+                  placeholder="Enter password"
+                  value={password}
+                  onChange={(e) =>
+                    setPassword(e.target.value)
+                  }
+                  autoComplete="current-password"
+                  disabled={loading}
+                  required
+                />
+
+                <button
+                  type="button"
+                  className="show-password-btn"
+                  onClick={() =>
+                    setShowPassword(
+                      (current) => !current
+                    )
+                  }
+                >
+                  {showPassword
+                    ? "Hide"
+                    : "Show"}
+                </button>
+
+              </div>
             </div>
 
+            {/* OPTIONS */}
+
             <div className="login-options">
+
               <label className="remember-me">
+
                 <input
                   type="checkbox"
                   checked={rememberMe}
-                  onChange={(e) => setRememberMe(e.target.checked)}
+                  onChange={(e) =>
+                    setRememberMe(
+                      e.target.checked
+                    )
+                  }
+                  disabled={loading}
                 />
 
                 Remember me
+
               </label>
 
               <Link
@@ -417,15 +640,21 @@ function Login() {
               >
                 Forgot Password?
               </Link>
+
             </div>
+
+            {/* LOGIN BUTTON */}
 
             <button
               type="submit"
               className="login-submit-btn"
               disabled={loading}
             >
-              {loading ? "Logging in..." : "Login"}
+              {loading
+                ? "Logging in..."
+                : "Login"}
             </button>
+
           </form>
 
           <div className="login-divider">
@@ -437,6 +666,7 @@ function Login() {
           </p>
 
           <div className="login-register-actions">
+
             <Link
               to="/register"
               className="login-register-btn"
@@ -450,12 +680,15 @@ function Login() {
             >
               Register as Driver
             </Link>
+
           </div>
 
           <div className="login-role-info">
-            Admin, Super Admin and Taxi Operations accounts are
-            created and managed by authorized system administrators.
+            Admin, Super Admin and Taxi Operator accounts
+            are created and managed by authorized system
+            administrators.
           </div>
+
         </div>
       </main>
     </>

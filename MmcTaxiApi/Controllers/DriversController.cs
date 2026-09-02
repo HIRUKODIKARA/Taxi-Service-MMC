@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -49,6 +50,33 @@ namespace MmcTaxiApi.Controllers
                    User.IsInRole("ADMIN");
         }
 
+        private async Task<bool> HasPermissionAsync(
+            string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+            {
+                return true;
+            }
+
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return false;
+            }
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         private async Task<bool> IsOwnDriverAsync(int driverId)
         {
             var currentUserId = GetCurrentUserId();
@@ -69,7 +97,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin / Taxi Operations
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("VIEW_DRIVERS")]
         public async Task<ActionResult> GetDrivers()
         {
             var drivers = await _context.Drivers
@@ -156,16 +184,14 @@ namespace MmcTaxiApi.Controllers
 
             var canView =
                 await IsOwnDriverAsync(id) ||
-                User.IsInRole("SUPER_ADMIN") ||
-                User.IsInRole("ADMIN") ||
-                User.IsInRole("TAXI_OPERATIONS");
+                await HasPermissionAsync("VIEW_DRIVERS");
 
             if (!canView)
             {
                 return StatusCode(403, new
                 {
                     message =
-                        "You do not have permission to view this driver."
+                        "You do not have VIEW_DRIVERS permission."
                 });
             }
 
@@ -201,18 +227,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            var privileged =
-                User.IsInRole("SUPER_ADMIN") ||
-                User.IsInRole("ADMIN") ||
-                User.IsInRole("TAXI_OPERATIONS");
-
-            if (currentUserId.Value != userId && !privileged)
+            if (currentUserId.Value != userId)
             {
-                return StatusCode(403, new
+                var canViewDrivers =
+                    await HasPermissionAsync("VIEW_DRIVERS");
+
+                if (!canViewDrivers)
                 {
-                    message =
-                        "You do not have permission to view this driver."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have VIEW_DRIVERS permission."
+                    });
+                }
             }
 
             var driver = await _context.Drivers
@@ -260,14 +287,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                !await IsOwnDriverAsync(id))
+            if (!await IsOwnDriverAsync(id))
             {
-                return StatusCode(403, new
+                var canVerifyDrivers =
+                    await HasPermissionAsync("VERIFY_DRIVERS");
+
+                if (!canVerifyDrivers)
                 {
-                    message =
-                        "You do not have permission to view this verification information."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have VERIFY_DRIVERS permission."
+                    });
+                }
             }
 
             var documents = await _context.DriverDocuments
@@ -327,7 +359,7 @@ namespace MmcTaxiApi.Controllers
         // use a separate controlled registration workflow.
         // =========================================================
         [HttpPost]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("MANAGE_DRIVERS")]
         public async Task<ActionResult> CreateDriver(
             [FromBody] CreateDriverRequest request)
         {
@@ -527,14 +559,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                driver.UserId != currentUserId.Value)
+            if (driver.UserId != currentUserId.Value)
             {
-                return StatusCode(403, new
+                var canManageDrivers =
+                    await HasPermissionAsync("MANAGE_DRIVERS");
+
+                if (!canManageDrivers)
                 {
-                    message =
-                        "You do not have permission to update this driver."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have MANAGE_DRIVERS permission."
+                    });
+                }
             }
 
             if (string.IsNullOrWhiteSpace(
@@ -645,14 +682,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (driver.UserId != currentUserId.Value &&
-                !IsAdminOrSuperAdmin())
+            if (driver.UserId != currentUserId.Value)
             {
-                return StatusCode(403, new
+                var canManageDrivers =
+                    await HasPermissionAsync("MANAGE_DRIVERS");
+
+                if (!canManageDrivers)
                 {
-                    message =
-                        "You do not have permission to change this driver status."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have MANAGE_DRIVERS permission."
+                    });
+                }
             }
 
             var requestedStatus =
@@ -760,14 +802,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (driver.UserId != currentUserId.Value &&
-                !IsAdminOrSuperAdmin())
+            if (driver.UserId != currentUserId.Value)
             {
-                return StatusCode(403, new
+                var canManageDrivers =
+                    await HasPermissionAsync("MANAGE_DRIVERS");
+
+                if (!canManageDrivers)
                 {
-                    message =
-                        "You do not have permission to change this driver's GPS setting."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have MANAGE_DRIVERS permission."
+                    });
+                }
             }
 
             if (request.Enabled &&
@@ -810,7 +857,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpPut("{id}/approve")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("VERIFY_DRIVERS")]
         public async Task<ActionResult> ApproveDriver(int id)
         {
             var currentUserId = GetCurrentUserId();
@@ -967,7 +1014,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpPut("{id}/reject")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("VERIFY_DRIVERS")]
         public async Task<ActionResult> RejectDriver(
             int id,
             [FromBody] RejectDriverRequest request)

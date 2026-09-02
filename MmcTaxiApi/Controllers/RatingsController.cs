@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -43,13 +44,40 @@ namespace MmcTaxiApi.Controllers
                    User.IsInRole("TAXI_OPERATIONS");
         }
 
+        private async Task<bool> HasPermissionAsync(
+            string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+            {
+                return true;
+            }
+
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return false;
+            }
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         // =========================================================
         // GET: api/ratings
         //
         // Management only
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("VIEW_RATINGS")]
         public async Task<ActionResult> GetRatings()
         {
             var ratings = await _context.Ratings
@@ -75,7 +103,7 @@ namespace MmcTaxiApi.Controllers
         // Passenger gets own submitted ratings
         // =========================================================
         [HttpGet("my")]
-        [Authorize(Policy = "PassengerOnly")]
+        [HasPermission("VIEW_RATINGS")]
         public async Task<ActionResult> GetMyRatings()
         {
             var currentUserId = GetCurrentUserId();
@@ -141,7 +169,7 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            var allowed = IsManagementUser();
+            var allowed = await HasPermissionAsync("VIEW_RATINGS");
 
             if (!allowed &&
                 User.IsInRole("PASSENGER"))
@@ -215,7 +243,7 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            var allowed = IsManagementUser();
+            var allowed = await HasPermissionAsync("VIEW_RATINGS");
 
             if (!allowed &&
                 User.IsInRole("PASSENGER"))
@@ -304,7 +332,7 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsManagementUser() &&
+            if (!await HasPermissionAsync("VIEW_RATINGS") &&
                 driver.UserId != currentUserId.Value)
             {
                 return StatusCode(403, new
@@ -351,7 +379,7 @@ namespace MmcTaxiApi.Controllers
         // Driver gets own ratings without sending DriverId
         // =========================================================
         [HttpGet("my-driver-ratings")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("VIEW_RATINGS")]
         public async Task<ActionResult>
             GetMyDriverRatings()
         {
@@ -417,7 +445,7 @@ namespace MmcTaxiApi.Controllers
         // Passenger should use /my
         // =========================================================
         [HttpGet("passenger/{passengerId}")]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("VIEW_RATINGS")]
         public async Task<ActionResult>
             GetRatingsByPassenger(int passengerId)
         {
@@ -460,7 +488,7 @@ namespace MmcTaxiApi.Controllers
         // PassengerId comes from JWT
         // =========================================================
         [HttpPost]
-        [Authorize(Policy = "PassengerOnly")]
+        [HasPermission("CREATE_RATING")]
         public async Task<ActionResult> CreateRating(
             [FromBody] CreateRatingRequest request)
         {
@@ -680,7 +708,7 @@ namespace MmcTaxiApi.Controllers
         // Only owner can update
         // =========================================================
         [HttpPut("{id}")]
-        [Authorize(Policy = "PassengerOnly")]
+        [HasPermission("CREATE_RATING")]
         public async Task<IActionResult> UpdateRating(
             int id,
             [FromBody] UpdateRatingRequest request)

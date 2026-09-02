@@ -1,7 +1,151 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 function PassengerDashboard() {
   const navigate = useNavigate();
+  const API_BASE_URL = "http://localhost:5171/api";
+
+  const [profile, setProfile] = useState({ fullName: "Passenger" });
+  const [bookings, setBookings] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const getToken = () =>
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken") ||
+    sessionStorage.getItem("accessToken") ||
+    "";
+
+  const getHeaders = () => {
+    const token = getToken();
+
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const loadDashboard = async () => {
+    const token = getToken();
+
+    if (!token) {
+      setError("Please login to view your passenger dashboard.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+
+      const [profileResponse, bookingsResponse, notificationsResponse] =
+        await Promise.all([
+          fetch(`${API_BASE_URL}/users/me`, {
+            headers: getHeaders(),
+          }),
+          fetch(`${API_BASE_URL}/bookings/my`, {
+            headers: getHeaders(),
+          }),
+          fetch(`${API_BASE_URL}/notifications/me`, {
+            headers: getHeaders(),
+          }),
+        ]);
+
+      if (!profileResponse.ok) {
+        throw new Error("Unable to load passenger information.");
+      }
+
+      if (!bookingsResponse.ok) {
+        throw new Error("Unable to load your bookings.");
+      }
+
+      const profileData = await profileResponse.json();
+      const bookingsData = await bookingsResponse.json();
+      const notificationsData = notificationsResponse.ok
+        ? await notificationsResponse.json()
+        : [];
+
+      setProfile({
+        fullName: profileData.fullName || "Passenger",
+      });
+
+      setBookings(
+        [...bookingsData].sort(
+          (a, b) =>
+            new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+        )
+      );
+
+      setNotifications(notificationsData);
+    } catch (err) {
+      console.error("Passenger dashboard error:", err);
+      setError(err.message || "Unable to load passenger dashboard.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadDashboard();
+
+    const handleProfileUpdated = () => loadDashboard();
+    window.addEventListener(
+      "passenger-profile-updated",
+      handleProfileUpdated
+    );
+
+    return () =>
+      window.removeEventListener(
+        "passenger-profile-updated",
+        handleProfileUpdated
+      );
+  }, []);
+
+  const activeStatuses = [
+    "PENDING",
+    "WAITING_FOR_DRIVER",
+    "ACCEPTED",
+    "DRIVER_ARRIVING",
+    "ON_RIDE",
+  ];
+
+  const activeBookings = useMemo(
+    () =>
+      bookings.filter((booking) =>
+        activeStatuses.includes(booking.bookingStatus)
+      ),
+    [bookings]
+  );
+
+  const currentBooking = activeBookings[0] || null;
+
+  const completedTrips = bookings.filter(
+    (booking) => booking.bookingStatus === "COMPLETED"
+  ).length;
+
+  const unreadNotifications = notifications.filter(
+    (notification) => !notification.isRead
+  ).length;
+
+  const formatStatus = (status) => {
+    if (!status) return "Unknown";
+
+    return status
+      .replaceAll("_", " ")
+      .toLowerCase()
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const canTrack =
+    currentBooking &&
+    ["ACCEPTED", "DRIVER_ARRIVING", "ON_RIDE"].includes(
+      currentBooking.bookingStatus
+    ) &&
+    currentBooking.assignedDriverId;
 
   return (
     <>
@@ -23,6 +167,29 @@ function PassengerDashboard() {
           margin: 0 0 24px;
           color: #7b8794;
           font-size: 12px;
+        }
+
+        .passenger-dashboard-error,
+        .passenger-dashboard-loading,
+        .passenger-empty-booking {
+          margin-bottom: 20px;
+          padding: 14px;
+          border-radius: 8px;
+          font-size: 10px;
+          line-height: 1.6;
+        }
+
+        .passenger-dashboard-error {
+          background: #fff1f1;
+          border: 1px solid #efc8c8;
+          color: #a43c3c;
+        }
+
+        .passenger-dashboard-loading,
+        .passenger-empty-booking {
+          background: white;
+          border: 1px solid #e2e7ec;
+          color: #7b8794;
         }
 
         .passenger-summary-grid {
@@ -114,6 +281,11 @@ function PassengerDashboard() {
           font-weight: 700;
         }
 
+        .passenger-current-actions button:disabled {
+          opacity: .5;
+          cursor: not-allowed;
+        }
+
         .passenger-outline-btn {
           border: 1px solid #0b2946;
           background: white;
@@ -172,119 +344,174 @@ function PassengerDashboard() {
         <h1>Passenger Dashboard</h1>
 
         <p className="passenger-dashboard-subtitle">
-          Welcome back, Nadeesha. Manage your taxi bookings and trips.
+          Welcome back, {profile.fullName}. Manage your taxi bookings and trips.
         </p>
 
-        <div className="passenger-summary-grid">
-          <div className="passenger-summary-card">
-            <span>TOTAL BOOKINGS</span>
-            <h2>8</h2>
+        {error && (
+          <div className="passenger-dashboard-error">{error}</div>
+        )}
+
+        {loading ? (
+          <div className="passenger-dashboard-loading">
+            Loading passenger dashboard...
           </div>
+        ) : (
+          <>
+            <div className="passenger-summary-grid">
+              <div className="passenger-summary-card">
+                <span>TOTAL BOOKINGS</span>
+                <h2>{bookings.length}</h2>
+              </div>
 
-          <div className="passenger-summary-card">
-            <span>ACTIVE BOOKING</span>
-            <h2>1</h2>
-          </div>
+              <div className="passenger-summary-card">
+                <span>ACTIVE BOOKINGS</span>
+                <h2>{activeBookings.length}</h2>
+              </div>
 
-          <div className="passenger-summary-card">
-            <span>COMPLETED TRIPS</span>
-            <h2>7</h2>
-          </div>
+              <div className="passenger-summary-card">
+                <span>COMPLETED TRIPS</span>
+                <h2>{completedTrips}</h2>
+              </div>
 
-          <div className="passenger-summary-card">
-            <span>NOTIFICATIONS</span>
-            <h2>2</h2>
-          </div>
-        </div>
-
-        <div className="passenger-dashboard-grid">
-          <section className="passenger-card">
-            <h2>Current Booking</h2>
-
-            <span className="passenger-status">
-              Driver Accepted
-            </span>
-
-            <div className="current-booking-row">
-              <span>Booking ID</span>
-              <strong>BK001</strong>
+              <div className="passenger-summary-card">
+                <span>UNREAD NOTIFICATIONS</span>
+                <h2>{unreadNotifications}</h2>
+              </div>
             </div>
 
-            <div className="current-booking-row">
-              <span>Pickup</span>
-              <strong>Makumbura Multimodal Center</strong>
+            <div className="passenger-dashboard-grid">
+              <section className="passenger-card">
+                <h2>Current Booking</h2>
+
+                {!currentBooking ? (
+                  <div className="passenger-empty-booking">
+                    You do not have an active booking right now.
+                    <br />
+                    Use <strong>Book Taxi</strong> to create a new request.
+                  </div>
+                ) : (
+                  <>
+                    <span className="passenger-status">
+                      {formatStatus(currentBooking.bookingStatus)}
+                    </span>
+
+                    <div className="current-booking-row">
+                      <span>Booking ID</span>
+                      <strong>#{currentBooking.bookingId}</strong>
+                    </div>
+
+                    <div className="current-booking-row">
+                      <span>Pickup</span>
+                      <strong>
+                        {currentBooking.pickupLocation || "—"}
+                      </strong>
+                    </div>
+
+                    <div className="current-booking-row">
+                      <span>Destination</span>
+                      <strong>
+                        {currentBooking.destination || "—"}
+                      </strong>
+                    </div>
+
+                    <div className="current-booking-row">
+                      <span>Driver</span>
+                      <strong>
+                        {currentBooking.assignedDriverId
+                          ? `Assigned (Driver #${currentBooking.assignedDriverId})`
+                          : "Waiting for assignment"}
+                      </strong>
+                    </div>
+
+                    <div className="current-booking-row">
+                      <span>Vehicle</span>
+                      <strong>
+                        {currentBooking.assignedVehicleId
+                          ? `Assigned (Vehicle #${currentBooking.assignedVehicleId})`
+                          : "Waiting for assignment"}
+                      </strong>
+                    </div>
+
+                    <div className="passenger-current-actions">
+                      <button
+                        type="button"
+                        className="passenger-outline-btn"
+                        onClick={() =>
+                          navigate("/passenger/bookings")
+                        }
+                      >
+                        View Booking
+                      </button>
+
+                      <button
+                        type="button"
+                        className="passenger-yellow-btn"
+                        disabled={!canTrack}
+                        onClick={() =>
+                          navigate("/passenger/tracking")
+                        }
+                      >
+                        {canTrack
+                          ? "Track Driver"
+                          : "Tracking Pending"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </section>
+
+              <section className="passenger-card">
+                <h2>Quick Actions</h2>
+
+                <div className="passenger-quick-grid">
+                  <button
+                    type="button"
+                    className="passenger-quick-btn"
+                    onClick={() =>
+                      navigate("/passenger/book-taxi")
+                    }
+                  >
+                    <span>🚕</span>
+                    Book Taxi
+                  </button>
+
+                  <button
+                    type="button"
+                    className="passenger-quick-btn"
+                    onClick={() =>
+                      navigate("/passenger/bookings")
+                    }
+                  >
+                    <span>📋</span>
+                    My Bookings
+                  </button>
+
+                  <button
+                    type="button"
+                    className="passenger-quick-btn"
+                    onClick={() =>
+                      navigate("/passenger/tracking")
+                    }
+                  >
+                    <span>📍</span>
+                    Track Booking
+                  </button>
+
+                  <button
+                    type="button"
+                    className="passenger-quick-btn"
+                    onClick={() =>
+                      navigate("/passenger/notifications")
+                    }
+                  >
+                    <span>🔔</span>
+                    Notifications
+                  </button>
+                </div>
+              </section>
             </div>
-
-            <div className="current-booking-row">
-              <span>Destination</span>
-              <strong>Colombo</strong>
-            </div>
-
-            <div className="current-booking-row">
-              <span>Driver</span>
-              <strong>Kasun Perera</strong>
-            </div>
-
-            <div className="current-booking-row">
-              <span>Vehicle</span>
-              <strong>WP CAB-1234</strong>
-            </div>
-
-            <div className="passenger-current-actions">
-              <button
-                className="passenger-outline-btn"
-                onClick={() => navigate("/passenger/bookings")}
-              >
-                View Booking
-              </button>
-
-              <button
-                className="passenger-yellow-btn"
-                onClick={() => navigate("/passenger/tracking")}
-              >
-                Track Driver
-              </button>
-            </div>
-          </section>
-
-          <section className="passenger-card">
-            <h2>Quick Actions</h2>
-
-            <div className="passenger-quick-grid">
-              <button
-                className="passenger-quick-btn"
-                onClick={() => navigate("/passenger/book-taxi")}
-              >
-                <span>🚕</span>
-                Book Taxi
-              </button>
-
-              <button
-                className="passenger-quick-btn"
-                onClick={() => navigate("/passenger/bookings")}
-              >
-                <span>📋</span>
-                My Bookings
-              </button>
-
-              <button
-                className="passenger-quick-btn"
-                onClick={() => navigate("/passenger/tracking")}
-              >
-                <span>📍</span>
-                Track Booking
-              </button>
-
-              <button
-                className="passenger-quick-btn"
-                onClick={() => navigate("/passenger/notifications")}
-              >
-                <span>🔔</span>
-                Notifications
-              </button>
-            </div>
-          </section>
-        </div>
+          </>
+        )}
       </main>
     </>
   );

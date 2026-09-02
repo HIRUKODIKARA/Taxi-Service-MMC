@@ -1,12 +1,22 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import {
+  BrowserRouter,
+  Routes,
+  Route,
+  Navigate,
+} from "react-router-dom";
 
-/* COMPONENTS */
+/* =========================================================
+   COMPONENTS
+========================================================= */
+
 import Navbar from "./components/Navbar";
 
-/* PUBLIC LAYOUT */
+/* =========================================================
+   PUBLIC
+========================================================= */
+
 import PublicPageLayout from "./layouts/PublicPageLayout";
 
-/* PUBLIC PAGES */
 import Home from "./pages/public/Home";
 import About from "./pages/public/About";
 import Services from "./pages/public/Services";
@@ -17,7 +27,10 @@ import Register from "./pages/public/Register";
 import ForgotPassword from "./pages/public/ForgotPassword";
 import DriverRegister from "./pages/public/DriverRegister";
 
-/* SUPER ADMIN */
+/* =========================================================
+   SUPER ADMIN
+========================================================= */
+
 import SuperAdminLayout from "./layouts/SuperAdminLayout";
 
 import SuperAdminDashboard from "./pages/superAdmin/SuperAdminDashboard";
@@ -34,7 +47,26 @@ import Reports from "./pages/superAdmin/Reports";
 import ActivityMonitoring from "./pages/superAdmin/ActivityMonitoring";
 import SystemSettings from "./pages/superAdmin/SystemSettings";
 
-/* TAXI OPERATIONS */
+/* =========================================================
+   ADMIN
+========================================================= */
+
+import AdminLayout from "./layouts/AdminLayout";
+
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminDrivers from "./pages/admin/AdminDrivers";
+import AdminDriverVerification from "./pages/admin/AdminDriverVerification";
+import AdminVehicles from "./pages/admin/AdminVehicles";
+import AdminVehicleTypes from "./pages/admin/AdminVehicleTypes";
+import AdminBookings from "./pages/admin/AdminBookings";
+import AdminReports from "./pages/admin/AdminReports";
+import AdminActivity from "./pages/admin/AdminActivity";
+
+/* =========================================================
+   TAXI OPERATOR
+========================================================= */
+
 import OperationsLayout from "./layouts/OperationsLayout";
 
 import TaxiOperationsDashboard from "./pages/operations/TaxiOperationsDashboard";
@@ -45,7 +77,10 @@ import OperationsDrivers from "./pages/operations/OperationsDrivers";
 import OperationsVehicles from "./pages/operations/OperationsVehicles";
 import OperationsNotifications from "./pages/operations/OperationsNotifications";
 
-/* DRIVER */
+/* =========================================================
+   DRIVER
+========================================================= */
+
 import DriverLayout from "./layouts/DriverLayout";
 
 import DriverDashboard from "./pages/driver/DriverDashboard";
@@ -55,7 +90,10 @@ import DriverLocation from "./pages/driver/DriverLocation";
 import DriverNotifications from "./pages/driver/DriverNotifications";
 import DriverProfile from "./pages/driver/DriverProfile";
 
-/* PASSENGER */
+/* =========================================================
+   PASSENGER
+========================================================= */
+
 import PassengerLayout from "./layouts/PassengerLayout";
 
 import PassengerDashboard from "./pages/passenger/PassengerDashboard";
@@ -65,55 +103,307 @@ import TrackBooking from "./pages/passenger/TrackBooking";
 import PassengerNotifications from "./pages/passenger/PassengerNotifications";
 import PassengerProfile from "./pages/passenger/PassengerProfile";
 
+/* =========================================================
+   AUTH HELPERS
+========================================================= */
+
+const getToken = () =>
+  localStorage.getItem("token") ||
+  localStorage.getItem("authToken") ||
+  localStorage.getItem("accessToken") ||
+  sessionStorage.getItem("token") ||
+  sessionStorage.getItem("authToken") ||
+  sessionStorage.getItem("accessToken") ||
+  "";
+
+const getStoredUser = () => {
+  const raw =
+    localStorage.getItem("user") ||
+    sessionStorage.getItem("user");
+
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+};
+
+const normalizeRole = (role) => {
+  if (!role) {
+    return "";
+  }
+
+  return String(role)
+    .trim()
+    .toUpperCase()
+    .replaceAll(" ", "_");
+};
+
+const getUserRoles = () => {
+  const user = getStoredUser();
+
+  if (!user) {
+    return [];
+  }
+
+  if (Array.isArray(user.roles)) {
+    return user.roles
+      .map(normalizeRole)
+      .filter(Boolean);
+  }
+
+  if (user.role) {
+    return [normalizeRole(user.role)];
+  }
+
+  if (user.roleName) {
+    return [normalizeRole(user.roleName)];
+  }
+
+  return [];
+};
+
+/* =========================================================
+   DEFAULT DASHBOARD BY ROLE
+========================================================= */
+
+const getDefaultDashboard = () => {
+  const roles = getUserRoles();
+
+  if (roles.includes("SUPER_ADMIN")) {
+    return "/super-admin/dashboard";
+  }
+
+  if (roles.includes("ADMIN")) {
+    return "/admin/dashboard";
+  }
+
+  if (roles.includes("TAXI_OPERATIONS")) {
+    return "/operations/dashboard";
+  }
+
+  if (roles.includes("DRIVER")) {
+    return "/driver/dashboard";
+  }
+
+  if (roles.includes("PASSENGER")) {
+    return "/passenger/dashboard";
+  }
+
+  return "/login";
+};
+
+/* =========================================================
+   ROLE GUARD
+========================================================= */
+
+function RoleGuard({ allowedRoles, children }) {
+  const token = getToken();
+
+  const roles = getUserRoles();
+
+  if (!token) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
+
+  if (roles.length === 0) {
+    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("user");
+
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("user");
+
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
+
+  const normalizedAllowedRoles =
+    allowedRoles.map(normalizeRole);
+
+  const hasAllowedRole =
+    normalizedAllowedRoles.some((role) =>
+      roles.includes(role)
+    );
+
+  if (!hasAllowedRole) {
+    return (
+      <Navigate
+        to={getDefaultDashboard()}
+        replace
+      />
+    );
+  }
+
+  return children;
+}
+
+/* =========================================================
+   PUBLIC ONLY
+========================================================= */
+
+function PublicOnly({ children }) {
+  const token = getToken();
+
+  if (token) {
+    return (
+      <Navigate
+        to={getDefaultDashboard()}
+        replace
+      />
+    );
+  }
+
+  return children;
+}
+
+/* =========================================================
+   ROOT REDIRECT
+========================================================= */
+
+function RootPage() {
+  const token = getToken();
+
+  if (token) {
+    return (
+      <Navigate
+        to={getDefaultDashboard()}
+        replace
+      />
+    );
+  }
+
+  return (
+    <>
+      <Navbar />
+      <Home />
+    </>
+  );
+}
+
+/* =========================================================
+   APP
+========================================================= */
+
 function App() {
   return (
     <BrowserRouter>
       <Routes>
 
-        {/* ================= HOME ================= */}
+        {/* =================================================
+            HOME
+        ================================================= */}
 
         <Route
           path="/"
-          element={
-            <>
-              <Navbar />
-              <Home />
-            </>
-          }
+          element={<RootPage />}
         />
 
-        {/* ================= PUBLIC PAGES ================= */}
+        {/* =================================================
+            PUBLIC PAGES
+        ================================================= */}
 
         <Route element={<PublicPageLayout />}>
-          <Route path="/about" element={<About />} />
-          <Route path="/services" element={<Services />} />
-          <Route path="/vehicles" element={<Vehicles />} />
-          <Route path="/contact" element={<Contact />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+
+          <Route
+            path="/about"
+            element={<About />}
+          />
+
+          <Route
+            path="/services"
+            element={<Services />}
+          />
+
+          <Route
+            path="/vehicles"
+            element={<Vehicles />}
+          />
+
+          <Route
+            path="/contact"
+            element={<Contact />}
+          />
+
+          <Route
+            path="/login"
+            element={
+              <PublicOnly>
+                <Login />
+              </PublicOnly>
+            }
+          />
+
+          <Route
+            path="/register"
+            element={
+              <PublicOnly>
+                <Register />
+              </PublicOnly>
+            }
+          />
 
           <Route
             path="/forgot-password"
-            element={<ForgotPassword />}
+            element={
+              <PublicOnly>
+                <ForgotPassword />
+              </PublicOnly>
+            }
           />
 
           <Route
             path="/driver-register"
-            element={<DriverRegister />}
+            element={
+              <PublicOnly>
+                <DriverRegister />
+              </PublicOnly>
+            }
           />
 
-          <Route
-            path="/book-taxi"
-            element={<BookTaxi />}
-          />
         </Route>
 
-        {/* ================= SUPER ADMIN ================= */}
+        {/* =================================================
+            SUPER ADMIN
+        ================================================= */}
 
         <Route
           path="/super-admin"
-          element={<SuperAdminLayout />}
+          element={
+            <RoleGuard
+              allowedRoles={["SUPER_ADMIN"]}
+            >
+              <SuperAdminLayout />
+            </RoleGuard>
+          }
         >
+
+          <Route
+            index
+            element={
+              <Navigate
+                to="dashboard"
+                replace
+              />
+            }
+          />
+
           <Route
             path="dashboard"
             element={<SuperAdminDashboard />}
@@ -178,17 +468,115 @@ function App() {
             path="settings"
             element={<SystemSettings />}
           />
+
         </Route>
 
-        {/* ================= TAXI OPERATIONS ================= */}
+        {/* =================================================
+            ADMIN
+        ================================================= */}
+
+        <Route
+          path="/admin"
+          element={
+            <RoleGuard
+              allowedRoles={["ADMIN"]}
+            >
+              <AdminLayout />
+            </RoleGuard>
+          }
+        >
+
+          <Route
+            index
+            element={
+              <Navigate
+                to="dashboard"
+                replace
+              />
+            }
+          />
+
+          <Route
+            path="dashboard"
+            element={<AdminDashboard />}
+          />
+
+          <Route
+            path="users"
+            element={<AdminUsers />}
+          />
+
+          <Route
+            path="drivers"
+            element={<AdminDrivers />}
+          />
+
+          <Route
+            path="driver-verification"
+            element={
+              <AdminDriverVerification />
+            }
+          />
+
+          <Route
+            path="vehicles"
+            element={<AdminVehicles />}
+          />
+
+          <Route
+            path="vehicle-types"
+            element={<AdminVehicleTypes />}
+          />
+
+          <Route
+            path="bookings"
+            element={<AdminBookings />}
+          />
+
+          <Route
+            path="reports"
+            element={<AdminReports />}
+          />
+
+          <Route
+            path="activity"
+            element={<AdminActivity />}
+          />
+
+        </Route>
+
+        {/* =================================================
+            TAXI OPERATOR
+        ================================================= */}
 
         <Route
           path="/operations"
-          element={<OperationsLayout />}
+          element={
+            <RoleGuard
+              allowedRoles={[
+                "TAXI_OPERATIONS",
+              ]}
+            >
+              <OperationsLayout />
+            </RoleGuard>
+          }
         >
+
+          <Route
+            index
+            element={
+              <Navigate
+                to="dashboard"
+                replace
+              />
+            }
+          />
+
           <Route
             path="dashboard"
-            element={<TaxiOperationsDashboard />}
+            element={
+              <TaxiOperationsDashboard />
+            }
           />
 
           <Route
@@ -218,16 +606,38 @@ function App() {
 
           <Route
             path="notifications"
-            element={<OperationsNotifications />}
+            element={
+              <OperationsNotifications />
+            }
           />
+
         </Route>
 
-        {/* ================= DRIVER ================= */}
+        {/* =================================================
+            DRIVER
+        ================================================= */}
 
         <Route
           path="/driver"
-          element={<DriverLayout />}
+          element={
+            <RoleGuard
+              allowedRoles={["DRIVER"]}
+            >
+              <DriverLayout />
+            </RoleGuard>
+          }
         >
+
+          <Route
+            index
+            element={
+              <Navigate
+                to="dashboard"
+                replace
+              />
+            }
+          />
+
           <Route
             path="dashboard"
             element={<DriverDashboard />}
@@ -257,14 +667,34 @@ function App() {
             path="profile"
             element={<DriverProfile />}
           />
+
         </Route>
 
-        {/* ================= PASSENGER ================= */}
+        {/* =================================================
+            PASSENGER
+        ================================================= */}
 
         <Route
           path="/passenger"
-          element={<PassengerLayout />}
+          element={
+            <RoleGuard
+              allowedRoles={["PASSENGER"]}
+            >
+              <PassengerLayout />
+            </RoleGuard>
+          }
         >
+
+          <Route
+            index
+            element={
+              <Navigate
+                to="dashboard"
+                replace
+              />
+            }
+          />
+
           <Route
             path="dashboard"
             element={<PassengerDashboard />}
@@ -287,14 +717,56 @@ function App() {
 
           <Route
             path="notifications"
-            element={<PassengerNotifications />}
+            element={
+              <PassengerNotifications />
+            }
           />
 
           <Route
             path="profile"
             element={<PassengerProfile />}
           />
+
         </Route>
+
+        {/* =================================================
+            OLD BOOK TAXI URL
+        ================================================= */}
+
+        <Route
+          path="/book-taxi"
+          element={
+            <RoleGuard
+              allowedRoles={["PASSENGER"]}
+            >
+              <Navigate
+                to="/passenger/book-taxi"
+                replace
+              />
+            </RoleGuard>
+          }
+        />
+
+        {/* =================================================
+            NOT FOUND
+        ================================================= */}
+
+        <Route
+          path="*"
+          element={
+            getToken() ? (
+              <Navigate
+                to={getDefaultDashboard()}
+                replace
+              />
+            ) : (
+              <Navigate
+                to="/"
+                replace
+              />
+            )
+          }
+        />
 
       </Routes>
     </BrowserRouter>

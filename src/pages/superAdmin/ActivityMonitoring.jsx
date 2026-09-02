@@ -1,43 +1,77 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const API_BASE_URL = "http://localhost:5171/api";
+
+const getToken = () =>
+  localStorage.getItem("token") ||
+  localStorage.getItem("authToken") ||
+  localStorage.getItem("accessToken") ||
+  sessionStorage.getItem("token") ||
+  "";
+
+const authHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${getToken()}`,
+});
+
+const safeJson = async (response) => {
+  const raw = await response.text();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { message: raw };
+  }
+};
+
+const formatText = (value) =>
+  (value || "—")
+    .toString()
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
 
 function ActivityMonitoring() {
-  const [filter, setFilter] = useState("All");
+  const [activities, setActivities] = useState([]);
+  const [summary, setSummary] = useState({});
+  const [filter, setFilter] = useState("ALL");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const activities = [
-    {
-      id: 1,
-      type: "Booking",
-      user: "Taxi Operations",
-      action: "Created phone booking BK002",
-      time: "10:35 AM",
-    },
-    {
-      id: 2,
-      type: "Driver",
-      user: "Kasun Perera",
-      action: "Accepted booking BK001",
-      time: "10:28 AM",
-    },
-    {
-      id: 3,
-      type: "Vehicle",
-      user: "System",
-      action: "Vehicle WP AAB-4567 changed status to On Ride",
-      time: "10:26 AM",
-    },
-    {
-      id: 4,
-      type: "Admin",
-      user: "Super Admin",
-      action: "Updated TMS Operator account ADM002",
-      time: "09:50 AM",
-    },
-  ];
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const [logsRes, summaryRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/activitylogs/recent?limit=100`, { headers: authHeaders() }),
+        fetch(`${API_BASE_URL}/activitylogs/summary`, { headers: authHeaders() }),
+      ]);
+      const logs = await safeJson(logsRes);
+      const summaryData = await safeJson(summaryRes);
+      if (!logsRes.ok) throw new Error(logs?.message || "Unable to load activity logs.");
+      setActivities(Array.isArray(logs) ? logs : []);
+      setSummary(summaryRes.ok ? summaryData : {});
+    } catch (e) {
+      setError(e.message || "Unable to load activity monitoring.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const filtered =
-    filter === "All"
-      ? activities
-      : activities.filter((activity) => activity.type === filter);
+  useEffect(() => { loadData(); }, []);
+
+  const categories = useMemo(() => {
+    const values = new Set(activities.map((a) => a.activityType).filter(Boolean));
+    return ["ALL", ...values];
+  }, [activities]);
+
+  const filtered = filter === "ALL"
+    ? activities
+    : activities.filter((a) => a.activityType === filter);
+
+  const bookingEvents = activities.filter((a) => (a.activityType || "").includes("BOOKING")).length;
+  const driverEvents = activities.filter((a) => (a.activityType || "").includes("DRIVER")).length;
 
   return (
     <main className="sa-page">
@@ -46,70 +80,47 @@ function ActivityMonitoring() {
           <h1>Activity Monitoring</h1>
           <p>Monitor important user and system activities.</p>
         </div>
+        <button className="sa-btn-neutral" onClick={loadData}>Refresh</button>
       </div>
 
+      {error && <div className="sa-info-box"><strong>Error</strong><p>{error}</p></div>}
+
       <div className="sa-summary-grid">
-        <div className="sa-summary-card">
-          <span>Activities Today</span>
-          <h2>24</h2>
-        </div>
-
-        <div className="sa-summary-card">
-          <span>Booking Events</span>
-          <h2>10</h2>
-        </div>
-
-        <div className="sa-summary-card">
-          <span>Driver Events</span>
-          <h2>8</h2>
-        </div>
-
-        <div className="sa-summary-card">
-          <span>System Alerts</span>
-          <h2>2</h2>
-        </div>
+        <div className="sa-summary-card"><span>Activities Today</span><h2>{summary.todayLogs ?? 0}</h2></div>
+        <div className="sa-summary-card"><span>Booking Events</span><h2>{bookingEvents}</h2></div>
+        <div className="sa-summary-card"><span>Driver Events</span><h2>{driverEvents}</h2></div>
+        <div className="sa-summary-card"><span>Last 7 Days</span><h2>{summary.lastSevenDaysLogs ?? 0}</h2></div>
       </div>
 
       <section className="sa-card">
         <div className="sa-toolbar">
-          <select
-            className="sa-select"
-            value={filter}
-            onChange={(e) => setFilter(e.target.value)}
-          >
-            <option value="All">All Activity</option>
-            <option value="Booking">Booking</option>
-            <option value="Driver">Driver</option>
-            <option value="Vehicle">Vehicle</option>
-            <option value="Admin">Admin</option>
+          <select className="sa-select" value={filter} onChange={(e) => setFilter(e.target.value)}>
+            {categories.map((type) => (
+              <option key={type} value={type}>
+                {type === "ALL" ? "All Activity" : formatText(type)}
+              </option>
+            ))}
           </select>
         </div>
 
         <div className="sa-table-wrapper">
           <table className="sa-table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>User / Source</th>
-                <th>Activity</th>
-                <th>Time</th>
-              </tr>
-            </thead>
-
+            <thead><tr><th>Type</th><th>User / Source</th><th>Activity</th><th>Time</th></tr></thead>
             <tbody>
-              {filtered.map((activity) => (
-                <tr key={activity.id}>
-                  <td>
-                    <span className="sa-badge blue">
-                      {activity.type}
-                    </span>
-                  </td>
-
-                  <td className="sa-id">{activity.user}</td>
-                  <td>{activity.action}</td>
-                  <td>{activity.time}</td>
-                </tr>
-              ))}
+              {loading ? (
+                <tr><td colSpan="4">Loading activities...</td></tr>
+              ) : filtered.length === 0 ? (
+                <tr><td colSpan="4">No activity found.</td></tr>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.logId}>
+                    <td><span className="sa-badge blue">{formatText(a.activityType)}</span></td>
+                    <td className="sa-id">{a.userName || "System"}</td>
+                    <td>{a.description}</td>
+                    <td>{a.createdAt ? new Date(a.createdAt).toLocaleString() : "—"}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

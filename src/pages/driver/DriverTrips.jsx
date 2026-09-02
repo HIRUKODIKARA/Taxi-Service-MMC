@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 function DriverTrips() {
+  const API_BASE_URL = "http://localhost:5171/api";
   const [filter, setFilter] = useState("All");
 
   const [driver, setDriver] = useState(null);
@@ -125,7 +126,7 @@ function DriverTrips() {
 
       const driverResponse =
         await fetch(
-          `http://localhost:5171/api/drivers/user/${user.userId}`,
+          `${API_BASE_URL}/drivers/me`,
           {
             headers: getHeaders(),
           }
@@ -144,7 +145,7 @@ function DriverTrips() {
 
       const bookingsResponse =
         await fetch(
-          "http://localhost:5171/api/bookings",
+          `${API_BASE_URL}/bookings/my`,
           {
             headers: getHeaders(),
           }
@@ -223,7 +224,7 @@ function DriverTrips() {
 
         const response =
           await fetch(
-            `http://localhost:5171/api/bookings/${bookingId}/${action}`,
+            `${API_BASE_URL}/bookings/${bookingId}/${action}`,
             {
               method: "PUT",
               headers:

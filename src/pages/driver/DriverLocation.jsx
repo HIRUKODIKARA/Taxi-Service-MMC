@@ -1,82 +1,99 @@
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+
+const API_BASE_URL =
+  "http://localhost:5171/api";
+
+const getToken = () =>
+  localStorage.getItem("token") ||
+  localStorage.getItem("authToken") ||
+  localStorage.getItem("accessToken") ||
+  sessionStorage.getItem("token") ||
+  sessionStorage.getItem("authToken") ||
+  sessionStorage.getItem("accessToken") ||
+  "";
+
+const getHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${getToken()}`,
+});
+
+const safeJson = async (response) => {
+  const raw = await response.text();
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      message: raw,
+    };
+  }
+};
 
 function DriverLocation() {
-  const [status, setStatus] = useState("Offline");
-  const [driver, setDriver] = useState(null);
-
-  const [locationEnabled, setLocationEnabled] =
-    useState(false);
-
-  const [locationText, setLocationText] =
-    useState("Location not shared");
-
-  const [latitude, setLatitude] =
+  const [driver, setDriver] =
     useState(null);
 
-  const [longitude, setLongitude] =
-    useState(null);
+  const [status, setStatus] =
+    useState("Offline");
+
+  const [
+    locationEnabled,
+    setLocationEnabled,
+  ] = useState(false);
+
+  const [
+    locationText,
+    setLocationText,
+  ] = useState(
+    "Location not shared"
+  );
+
+  const [
+    latitude,
+    setLatitude,
+  ] = useState(null);
+
+  const [
+    longitude,
+    setLongitude,
+  ] = useState(null);
 
   const [loading, setLoading] =
     useState(true);
 
-  const [statusLoading, setStatusLoading] =
-    useState(false);
+  const [
+    statusLoading,
+    setStatusLoading,
+  ] = useState(false);
 
-  const [locationLoading, setLocationLoading] =
-    useState(false);
+  const [
+    locationLoading,
+    setLocationLoading,
+  ] = useState(false);
 
   const [error, setError] =
     useState("");
 
+  const [success, setSuccess] =
+    useState("");
+
   const intervalRef = useRef(null);
 
-  const getStoredUser = () => {
-    try {
-      const localUser =
-        localStorage.getItem("user");
+  /* =========================================================
+     STATUS HELPERS
+  ========================================================= */
 
-      const sessionUser =
-        sessionStorage.getItem("user");
-
-      if (localUser) {
-        return JSON.parse(localUser);
-      }
-
-      if (sessionUser) {
-        return JSON.parse(sessionUser);
-      }
-
-      return null;
-    } catch {
-      return null;
-    }
-  };
-
-  const getToken = () => {
-    return (
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("token") ||
-      ""
-    );
-  };
-
-  const getHeaders = () => {
-    const token = getToken();
-
-    return {
-      "Content-Type": "application/json",
-
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {}),
-    };
-  };
-
-  const user = getStoredUser();
-
-  const apiStatusToDisplay = (apiStatus) => {
+  const apiStatusToDisplay = (
+    apiStatus
+  ) => {
     switch (apiStatus) {
       case "AVAILABLE":
         return "Available";
@@ -92,7 +109,9 @@ function DriverLocation() {
     }
   };
 
-  const displayStatusToApi = (displayStatus) => {
+  const displayStatusToApi = (
+    displayStatus
+  ) => {
     switch (displayStatus) {
       case "Available":
         return "AVAILABLE";
@@ -108,18 +127,14 @@ function DriverLocation() {
     }
   };
 
-  useEffect(() => {
-    loadDriver();
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, []);
+  /* =========================================================
+     LOAD DRIVER
+  ========================================================= */
 
   const loadDriver = async () => {
-    if (!user) {
+    const token = getToken();
+
+    if (!token) {
       setError(
         "Please login to your driver account."
       );
@@ -132,67 +147,79 @@ function DriverLocation() {
     try {
       setLoading(true);
       setError("");
+      setSuccess("");
 
       const response = await fetch(
-        "http://localhost:5171/api/drivers",
+        `${API_BASE_URL}/drivers/me`,
         {
           headers: getHeaders(),
         }
       );
 
+      const data =
+        await safeJson(response);
+
       if (!response.ok) {
         throw new Error(
-          "Unable to load driver information."
+          data?.message ||
+            "Unable to load driver information."
         );
       }
 
-      const drivers =
-        await response.json();
-
-      const currentDriver =
-        drivers.find(
-          (item) =>
-            Number(item.userId) ===
-            Number(user.userId)
-        );
-
-      if (!currentDriver) {
-        setError(
-          "Driver profile was not found for this account."
-        );
-
-        return;
-      }
-
-      setDriver(currentDriver);
+      setDriver(data);
 
       setStatus(
         apiStatusToDisplay(
-          currentDriver.operationalStatus
+          data.operationalStatus
         )
       );
 
-      if (currentDriver.gpsEnabled) {
+      if (data.gpsEnabled) {
         setLocationEnabled(true);
 
         setLocationText(
           "GPS sharing is enabled for this driver."
         );
+      } else {
+        setLocationEnabled(false);
+
+        setLocationText(
+          "Location not shared"
+        );
       }
     } catch (err) {
       console.error(
-        "Driver loading error:",
+        "Driver load error:",
         err
       );
 
       setError(
-        err.message ||
+        err?.message ||
           "Unable to load driver information."
       );
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadDriver();
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(
+          intervalRef.current
+        );
+
+        intervalRef.current =
+          null;
+      }
+    };
+  }, []);
+
+  /* =========================================================
+     UPDATE DRIVER STATUS
+  ========================================================= */
 
   const updateDriverStatus =
     async (newStatus) => {
@@ -206,44 +233,62 @@ function DriverLocation() {
 
       try {
         setStatusLoading(true);
+
         setError("");
+        setSuccess("");
 
         const apiStatus =
-          displayStatusToApi(newStatus);
+          displayStatusToApi(
+            newStatus
+          );
 
         const response = await fetch(
-          `http://localhost:5171/api/drivers/${driver.driverId}`,
+          `${API_BASE_URL}/drivers/${driver.driverId}/status`,
           {
             method: "PUT",
 
-            headers: getHeaders(),
+            headers:
+              getHeaders(),
 
-            body: JSON.stringify({
-              ...driver,
-
-              operationalStatus:
-                apiStatus,
-            }),
+            body:
+              JSON.stringify({
+                status: apiStatus,
+              }),
           }
         );
 
+        const data =
+          await safeJson(response);
+
         if (!response.ok) {
           throw new Error(
-            "Unable to update driver status."
+            data?.message ||
+              "Unable to update driver status."
           );
         }
 
-        const updatedDriver =
-          await response.json();
+        const updatedStatus =
+          data?.operationalStatus ||
+          data?.driver?.operationalStatus ||
+          apiStatus;
 
-        setDriver(
-          updatedDriver
-        );
+        setDriver((current) => ({
+          ...current,
+
+          operationalStatus:
+            updatedStatus,
+        }));
 
         setStatus(
           apiStatusToDisplay(
-            updatedDriver.operationalStatus
+            updatedStatus
           )
+        );
+
+        setSuccess(
+          `Driver status changed to ${apiStatusToDisplay(
+            updatedStatus
+          )}.`
         );
       } catch (err) {
         console.error(
@@ -252,7 +297,7 @@ function DriverLocation() {
         );
 
         setError(
-          err.message ||
+          err?.message ||
             "Unable to update driver status."
         );
       } finally {
@@ -260,12 +305,67 @@ function DriverLocation() {
       }
     };
 
-  const saveLocation =
-    async (position) => {
+  /* =========================================================
+     ENABLE / DISABLE GPS IN BACKEND
+  ========================================================= */
+
+  const updateGpsEnabled =
+    async (enabled) => {
       if (!driver) {
-        return;
+        throw new Error(
+          "Driver profile is not available."
+        );
       }
 
+      const response = await fetch(
+        `${API_BASE_URL}/drivers/${driver.driverId}/gps`,
+        {
+          method: "PUT",
+
+          headers:
+            getHeaders(),
+
+          body:
+            JSON.stringify({
+              enabled,
+            }),
+        }
+      );
+
+      const data =
+        await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            "Unable to update GPS status."
+        );
+      }
+
+      const gpsEnabled =
+        data?.gpsEnabled ??
+        data?.driver?.gpsEnabled ??
+        enabled;
+
+      setDriver((current) => ({
+        ...current,
+
+        gpsEnabled,
+      }));
+
+      setLocationEnabled(
+        gpsEnabled
+      );
+
+      return gpsEnabled;
+    };
+
+  /* =========================================================
+     SAVE LOCATION
+  ========================================================= */
+
+  const saveLocation =
+    async (position) => {
       const lat =
         position.coords.latitude;
 
@@ -276,41 +376,52 @@ function DriverLocation() {
       setLongitude(lng);
 
       try {
+        /*
+          Backend identifies driver from JWT.
+          Do NOT send driverId.
+        */
+
         const response = await fetch(
-          "http://localhost:5171/api/driverlocations",
+          `${API_BASE_URL}/driverlocations`,
           {
             method: "POST",
 
-            headers: getHeaders(),
+            headers:
+              getHeaders(),
 
-            body: JSON.stringify({
-              driverId:
-                driver.driverId,
-
-              latitude: lat,
-
-              longitude: lng,
-            }),
+            body:
+              JSON.stringify({
+                latitude: lat,
+                longitude: lng,
+              }),
           }
         );
 
+        const data =
+          await safeJson(response);
+
         if (!response.ok) {
           throw new Error(
-            "Unable to save GPS location."
+            data?.message ||
+              "Unable to save GPS location."
           );
         }
 
         setLocationEnabled(true);
 
         setLocationText(
-          `Latitude: ${lat.toFixed(
-            5
+          `Location shared successfully. Latitude: ${lat.toFixed(
+            6
           )}, Longitude: ${lng.toFixed(
-            5
+            6
           )}`
         );
 
-        await updateGpsEnabled(true);
+        setSuccess(
+          "Latest GPS location saved successfully."
+        );
+
+        return true;
       } catch (err) {
         console.error(
           "Save location error:",
@@ -318,162 +429,272 @@ function DriverLocation() {
         );
 
         setLocationText(
-          "GPS location was received, but could not be saved to the server."
+          err?.message ||
+            "GPS location was received, but could not be saved to the server."
+        );
+
+        setError(
+          err?.message ||
+            "Unable to save GPS location."
+        );
+
+        return false;
+      }
+    };
+
+  /* =========================================================
+     GET CURRENT LOCATION
+  ========================================================= */
+
+  const requestCurrentLocation =
+    () =>
+      new Promise(
+        (resolve, reject) => {
+          if (
+            !navigator.geolocation
+          ) {
+            reject(
+              new Error(
+                "Geolocation is not supported by this browser."
+              )
+            );
+
+            return;
+          }
+
+          navigator.geolocation.getCurrentPosition(
+            (position) =>
+              resolve(position),
+
+            (geoError) => {
+              if (
+                geoError.code ===
+                geoError.PERMISSION_DENIED
+              ) {
+                reject(
+                  new Error(
+                    "Location permission was denied. Please allow location permission in your browser."
+                  )
+                );
+
+                return;
+              }
+
+              if (
+                geoError.code ===
+                geoError.POSITION_UNAVAILABLE
+              ) {
+                reject(
+                  new Error(
+                    "Current location is unavailable."
+                  )
+                );
+
+                return;
+              }
+
+              if (
+                geoError.code ===
+                geoError.TIMEOUT
+              ) {
+                reject(
+                  new Error(
+                    "Location request timed out."
+                  )
+                );
+
+                return;
+              }
+
+              reject(
+                new Error(
+                  "Unable to get current location."
+                )
+              );
+            },
+
+            {
+              enableHighAccuracy:
+                true,
+
+              timeout: 15000,
+
+              maximumAge: 5000,
+            }
+          );
+        }
+      );
+
+  /* =========================================================
+     SINGLE LOCATION UPDATE
+  ========================================================= */
+
+  const sendCurrentLocation =
+    async () => {
+      try {
+        const position =
+          await requestCurrentLocation();
+
+        await saveLocation(
+          position
+        );
+      } catch (err) {
+        console.error(
+          "Location request error:",
+          err
+        );
+
+        setLocationText(
+          err?.message ||
+            "Unable to get current location."
+        );
+
+        setError(
+          err?.message ||
+            "Unable to get current location."
         );
       }
     };
 
-  const updateGpsEnabled =
-    async (enabled) => {
+  /* =========================================================
+     START LOCATION SHARING
+  ========================================================= */
+
+  const startLocationSharing =
+    async () => {
       if (!driver) {
+        setError(
+          "Driver profile is not available."
+        );
+
         return;
       }
 
       try {
-        const response = await fetch(
-          `http://localhost:5171/api/drivers/${driver.driverId}`,
-          {
-            method: "PUT",
+        setLocationLoading(true);
 
-            headers: getHeaders(),
+        setError("");
+        setSuccess("");
 
-            body: JSON.stringify({
-              ...driver,
+        /*
+          IMPORTANT ORDER
 
-              gpsEnabled: enabled,
-            }),
-          }
+          1. Enable GPS in backend
+          2. Get browser GPS
+          3. POST location
+        */
+
+        await updateGpsEnabled(
+          true
         );
 
-        if (response.ok) {
-          const updatedDriver =
-            await response.json();
+        const position =
+          await requestCurrentLocation();
 
-          setDriver(
-            updatedDriver
-          );
-        }
-      } catch (err) {
-        console.error(
-          "GPS status update error:",
-          err
-        );
-      }
-    };
-
-  const requestCurrentLocation =
-    () => {
-      if (!navigator.geolocation) {
-        setLocationText(
-          "Geolocation is not supported by this browser."
-        );
-
-        return;
-      }
-
-      setLocationLoading(true);
-
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
+        const saved =
           await saveLocation(
             position
           );
 
-          setLocationLoading(false);
-        },
-
-        (geoError) => {
-          console.error(
-            "Geolocation error:",
-            geoError
-          );
-
-          setLocationEnabled(false);
-
-          if (
-            geoError.code ===
-            geoError.PERMISSION_DENIED
-          ) {
-            setLocationText(
-              "Location permission was denied. Please allow location permission in your browser."
-            );
-          } else if (
-            geoError.code ===
-            geoError.POSITION_UNAVAILABLE
-          ) {
-            setLocationText(
-              "Current location is unavailable."
-            );
-          } else if (
-            geoError.code ===
-            geoError.TIMEOUT
-          ) {
-            setLocationText(
-              "Location request timed out."
-            );
-          } else {
-            setLocationText(
-              "Unable to get current location."
-            );
-          }
-
-          setLocationLoading(false);
-        },
-
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 5000,
+        if (!saved) {
+          return;
         }
-      );
-    };
 
-  const startLocationSharing =
-    () => {
-      if (!navigator.geolocation) {
-        setLocationText(
-          "Geolocation is not supported by this browser."
-        );
-
-        return;
-      }
-
-      requestCurrentLocation();
-
-      if (intervalRef.current) {
-        clearInterval(
+        if (
           intervalRef.current
-        );
-      }
+        ) {
+          clearInterval(
+            intervalRef.current
+          );
+        }
 
-      intervalRef.current =
-        setInterval(() => {
-          requestCurrentLocation();
-        }, 15000);
+        intervalRef.current =
+          setInterval(() => {
+            sendCurrentLocation();
+          }, 15000);
+
+        setSuccess(
+          "Location sharing is active. Your latest location will be sent every 15 seconds while this page remains open."
+        );
+      } catch (err) {
+        console.error(
+          "Start location sharing error:",
+          err
+        );
+
+        setLocationEnabled(false);
+
+        setLocationText(
+          err?.message ||
+            "Unable to start location sharing."
+        );
+
+        setError(
+          err?.message ||
+            "Unable to start location sharing."
+        );
+      } finally {
+        setLocationLoading(false);
+      }
     };
+
+  /* =========================================================
+     STOP LOCATION SHARING
+  ========================================================= */
 
   const stopLocationSharing =
     async () => {
-      if (intervalRef.current) {
-        clearInterval(
+      try {
+        setLocationLoading(true);
+
+        setError("");
+        setSuccess("");
+
+        if (
           intervalRef.current
+        ) {
+          clearInterval(
+            intervalRef.current
+          );
+
+          intervalRef.current =
+            null;
+        }
+
+        await updateGpsEnabled(
+          false
         );
 
-        intervalRef.current =
-          null;
+        setLocationEnabled(false);
+
+        setLatitude(null);
+        setLongitude(null);
+
+        setLocationText(
+          "Location sharing stopped."
+        );
+
+        setSuccess(
+          "GPS location sharing has been stopped."
+        );
+      } catch (err) {
+        console.error(
+          "Stop location error:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to stop location sharing."
+        );
+      } finally {
+        setLocationLoading(false);
       }
-
-      setLocationEnabled(false);
-
-      setLocationText(
-        "Location sharing stopped."
-      );
-
-      setLatitude(null);
-      setLongitude(null);
-
-      await updateGpsEnabled(false);
     };
+
+  /* =========================================================
+     LOADING
+  ========================================================= */
 
   if (loading) {
     return (
@@ -481,12 +702,20 @@ function DriverLocation() {
         <style>{`
           .driver-location-loading {
             min-height: 100vh;
+
             display: flex;
             align-items: center;
             justify-content: center;
+
             background: #f4f7fa;
+
             color: #7b8794;
-            font-family: Arial, Helvetica, sans-serif;
+
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+
             font-size: 12px;
           }
         `}</style>
@@ -498,224 +727,350 @@ function DriverLocation() {
     );
   }
 
+  /* =========================================================
+     UI
+  ========================================================= */
+
   return (
     <>
       <style>{`
         .driver-location-page {
           min-height: 100vh;
+
           padding: 30px;
+
           background: #f4f7fa;
-          font-family: Arial, Helvetica, sans-serif;
+
+          font-family:
+            Arial,
+            Helvetica,
+            sans-serif;
         }
 
         .driver-location-header h1 {
           margin: 0 0 6px;
+
           color: #0b2946;
+
           font-size: 28px;
         }
 
         .driver-location-header p {
           margin: 0 0 24px;
+
           color: #7b8794;
+
           font-size: 12px;
         }
 
-        .driver-location-error {
-          margin-bottom: 20px;
-          padding: 13px;
-          background: #fff1f1;
-          border: 1px solid #efc8c8;
+        .driver-location-alert {
+          margin-bottom: 15px;
+
+          padding: 12px 14px;
+
           border-radius: 7px;
-          color: #a43c3c;
+
           font-size: 10px;
-          line-height: 1.6;
+
+          line-height: 1.5;
+        }
+
+        .driver-location-alert.error {
+          background: #fff1f1;
+
+          border:
+            1px solid #efc8c8;
+
+          color: #a43c3c;
+        }
+
+        .driver-location-alert.success {
+          background: #e8f7ed;
+
+          border:
+            1px solid #c3e6cd;
+
+          color: #24713b;
         }
 
         .driver-location-grid {
           display: grid;
-          grid-template-columns: 1fr 1fr;
+
+          grid-template-columns:
+            1fr 1fr;
+
           gap: 20px;
         }
 
         .driver-location-card {
           background: white;
+
           padding: 22px;
-          border: 1px solid #e2e7ec;
+
+          border:
+            1px solid #e2e7ec;
+
           border-radius: 10px;
         }
 
         .driver-location-card h2 {
           margin: 0 0 18px;
+
           color: #0b2946;
+
           font-size: 17px;
         }
 
         .driver-status-options {
           display: grid;
+
           gap: 10px;
         }
 
         .driver-status-option {
           display: flex;
-          justify-content: space-between;
+
+          justify-content:
+            space-between;
+
           align-items: center;
+
           padding: 13px;
+
           background: #f8fafc;
+
           border-radius: 7px;
         }
 
         .driver-status-option span {
           color: #53616e;
+
           font-size: 11px;
         }
 
         .driver-status-option button {
-          border: 1px solid #d9e0e6;
+          border:
+            1px solid #d9e0e6;
+
           background: white;
+
           padding: 7px 10px;
+
           border-radius: 5px;
+
           cursor: pointer;
+
           font-size: 9px;
         }
 
         .driver-status-option button.selected {
           background: #f6c20d;
+
           border-color: #f6c20d;
+
           color: #0b2946;
+
           font-weight: 700;
         }
 
         .driver-status-option button:disabled {
-          opacity: 0.6;
+          opacity: .6;
+
           cursor: not-allowed;
         }
 
         .driver-location-box {
           padding: 18px;
+
           background: #f8fafc;
+
           border-radius: 8px;
+
           text-align: center;
         }
 
         .driver-location-icon {
           font-size: 35px;
+
           margin-bottom: 12px;
         }
 
         .driver-location-box h3 {
           margin: 0 0 7px;
+
           color: #0b2946;
+
           font-size: 14px;
         }
 
         .driver-location-box p {
           margin: 0 0 15px;
+
           color: #73808c;
+
           font-size: 10px;
+
           line-height: 1.5;
         }
 
         .driver-location-btn {
           width: 100%;
+
           border: none;
+
           background: #f6c20d;
+
           color: #0b2946;
+
           padding: 11px;
+
           border-radius: 6px;
+
           cursor: pointer;
+
           font-weight: 700;
+
           font-size: 10px;
         }
 
+        .driver-location-btn:hover:not(:disabled) {
+          background: #e5b500;
+        }
+
         .driver-location-btn:disabled {
-          opacity: 0.6;
+          opacity: .6;
+
           cursor: not-allowed;
         }
 
         .driver-stop-location-btn {
           width: 100%;
+
           margin-top: 9px;
-          border: 1px solid #d9e0e6;
+
+          border:
+            1px solid #d9e0e6;
+
           background: white;
+
           color: #a43c3c;
+
           padding: 10px;
+
           border-radius: 6px;
+
           cursor: pointer;
+
           font-weight: 700;
+
           font-size: 10px;
         }
 
         .driver-location-result {
           margin-top: 15px;
+
           padding: 12px;
+
+          border-radius: 7px;
+
           background: ${
             locationEnabled
               ? "#e5f6eb"
               : "#fff4d7"
           };
-          border-radius: 7px;
+
           color: #53616e;
+
           font-size: 10px;
+
           line-height: 1.5;
         }
 
         .driver-location-note {
           margin-top: 20px;
+
           padding: 14px;
+
           background: #eef6ff;
+
           border-radius: 7px;
+
           color: #5b7184;
+
           font-size: 10px;
+
           line-height: 1.6;
         }
 
         .driver-gps-details {
           margin-top: 15px;
+
           display: grid;
-          grid-template-columns: 1fr 1fr;
+
+          grid-template-columns:
+            1fr 1fr;
+
           gap: 10px;
         }
 
         .driver-gps-detail {
           padding: 10px;
+
           background: white;
-          border: 1px solid #e4e9ed;
+
+          border:
+            1px solid #e4e9ed;
+
           border-radius: 6px;
+
           text-align: left;
         }
 
         .driver-gps-detail span {
           display: block;
+
           margin-bottom: 4px;
+
           color: #8a959f;
+
           font-size: 8px;
         }
 
         .driver-gps-detail strong {
           color: #0b2946;
+
           font-size: 10px;
         }
 
         .location-live-indicator {
           display: inline-block;
+
           margin-bottom: 12px;
+
           padding: 5px 9px;
+
           border-radius: 20px;
+
           background: #e5f6eb;
+
           color: #18763a;
+
           font-size: 9px;
+
           font-weight: 700;
         }
 
-        @media(max-width: 800px) {
+        @media(max-width:800px) {
           .driver-location-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns:
+              1fr;
           }
         }
 
-        @media(max-width: 480px) {
+        @media(max-width:480px) {
           .driver-gps-details {
-            grid-template-columns: 1fr;
+            grid-template-columns:
+              1fr;
           }
         }
       `}</style>
@@ -723,26 +1078,41 @@ function DriverLocation() {
       <main className="driver-location-page">
 
         <div className="driver-location-header">
-          <h1>Location & Status</h1>
+          <h1>
+            Location & Status
+          </h1>
 
           <p>
-            Manage your availability and share
-            your current GPS location with
-            Makumbura Taxi Operations.
+            Manage your availability and
+            share your current GPS
+            location with Makumbura Taxi
+            Operations.
           </p>
         </div>
 
         {error && (
-          <div className="driver-location-error">
+          <div className="driver-location-alert error">
             {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="driver-location-alert success">
+            {success}
           </div>
         )}
 
         <div className="driver-location-grid">
 
+          {/* =================================================
+              DRIVER STATUS
+          ================================================= */}
+
           <section className="driver-location-card">
 
-            <h2>Driver Availability</h2>
+            <h2>
+              Driver Availability
+            </h2>
 
             <div className="driver-status-options">
 
@@ -751,27 +1121,24 @@ function DriverLocation() {
                 "On Ride",
                 "Offline",
               ].map((item) => (
-
                 <div
                   className="driver-status-option"
                   key={item}
                 >
-
-                  <span>{item}</span>
+                  <span>
+                    {item}
+                  </span>
 
                   <button
                     type="button"
-
                     disabled={
                       statusLoading
                     }
-
                     className={
                       status === item
                         ? "selected"
                         : ""
                     }
-
                     onClick={() =>
                       updateDriverStatus(
                         item
@@ -784,15 +1151,14 @@ function DriverLocation() {
                       ? "Current"
                       : "Set Status"}
                   </button>
-
                 </div>
               ))}
 
             </div>
 
             <div className="driver-location-note">
-
-              Current operational status:{" "}
+              Current operational
+              status:{" "}
 
               <strong>
                 {status}
@@ -801,19 +1167,44 @@ function DriverLocation() {
               <br />
               <br />
 
-              Available drivers can receive
-              booking requests. On Ride means
-              an active passenger trip is in
-              progress. Offline drivers should
-              not receive new assignments.
+              <strong>
+                Available:
+              </strong>{" "}
+              Driver can receive new
+              booking assignments.
 
+              <br />
+              <br />
+
+              <strong>
+                Offline:
+              </strong>{" "}
+              Driver is not available for
+              new bookings.
+
+              <br />
+              <br />
+
+              <strong>
+                On Ride:
+              </strong>{" "}
+              Normally this status should
+              be controlled automatically
+              by the trip lifecycle when a
+              trip starts and completes.
             </div>
 
           </section>
 
+          {/* =================================================
+              GPS
+          ================================================= */}
+
           <section className="driver-location-card">
 
-            <h2>GPS Location</h2>
+            <h2>
+              GPS Location
+            </h2>
 
             <div className="driver-location-box">
 
@@ -834,19 +1225,19 @@ function DriverLocation() {
               </h3>
 
               <p>
-                Allow browser location permission
-                so Taxi Operations and passengers
-                with an active booking can view
-                your latest location.
+                Allow browser location
+                permission so Taxi
+                Operations and passengers
+                with an active booking can
+                view your latest location.
               </p>
 
               <button
                 type="button"
-
                 className="driver-location-btn"
-
-                disabled={locationLoading}
-
+                disabled={
+                  locationLoading
+                }
                 onClick={
                   startLocationSharing
                 }
@@ -861,9 +1252,10 @@ function DriverLocation() {
               {locationEnabled && (
                 <button
                   type="button"
-
                   className="driver-stop-location-btn"
-
+                  disabled={
+                    locationLoading
+                  }
                   onClick={
                     stopLocationSharing
                   }
@@ -881,7 +1273,9 @@ function DriverLocation() {
                   <div className="driver-gps-details">
 
                     <div className="driver-gps-detail">
-                      <span>Latitude</span>
+                      <span>
+                        Latitude
+                      </span>
 
                       <strong>
                         {latitude.toFixed(
@@ -891,7 +1285,9 @@ function DriverLocation() {
                     </div>
 
                     <div className="driver-gps-detail">
-                      <span>Longitude</span>
+                      <span>
+                        Longitude
+                      </span>
 
                       <strong>
                         {longitude.toFixed(
@@ -906,21 +1302,19 @@ function DriverLocation() {
             </div>
 
             <div className="driver-location-note">
-
-              While location sharing is active,
-              this page sends a new GPS location
-              to the MMC Taxi backend every
-              15 seconds.
+              While location sharing is
+              active, this page sends the
+              latest GPS location to the
+              MMC Taxi backend every
+              <strong> 15 seconds</strong>.
 
               <br />
               <br />
 
-              Browser-based sharing normally
-              works while this page is open.
-              If the browser or tab is closed,
-              continuous browser GPS tracking
-              cannot be guaranteed.
-
+              Browser-based sharing works
+              while this page remains open.
+              Closing the browser/tab can
+              stop continuous GPS updates.
             </div>
 
           </section>

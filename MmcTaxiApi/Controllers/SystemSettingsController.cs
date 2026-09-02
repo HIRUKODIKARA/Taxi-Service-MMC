@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -9,7 +10,8 @@ namespace MmcTaxiApi.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [Authorize(Policy = "SuperAdminOnly")]
+    [Authorize]
+    [HasPermission("MANAGE_SYSTEM_SETTINGS")]
     public class SystemSettingsController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
@@ -46,7 +48,7 @@ namespace MmcTaxiApi.Controllers
         // ==========================================
         // GET ALL SETTINGS
         // GET: api/systemsettings
-        // SUPER ADMIN ONLY
+        // Requires MANAGE_SYSTEM_SETTINGS permission
         // ==========================================
         [HttpGet]
         public async Task<ActionResult<IEnumerable<SystemSetting>>> GetSettings()
@@ -61,7 +63,7 @@ namespace MmcTaxiApi.Controllers
         // ==========================================
         // GET SETTING BY KEY
         // GET: api/systemsettings/BOOKING_ENABLED
-        // SUPER ADMIN ONLY
+        // Requires MANAGE_SYSTEM_SETTINGS permission
         // ==========================================
         [HttpGet("{key}")]
         public async Task<ActionResult<SystemSetting>> GetSetting(
@@ -97,7 +99,7 @@ namespace MmcTaxiApi.Controllers
         // ==========================================
         // CREATE SETTING
         // POST: api/systemsettings
-        // SUPER ADMIN ONLY
+        // Requires MANAGE_SYSTEM_SETTINGS permission
         // ==========================================
         [HttpPost]
         public async Task<ActionResult<SystemSetting>> CreateSetting(
@@ -219,7 +221,7 @@ namespace MmcTaxiApi.Controllers
         // ==========================================
         // UPDATE SETTING
         // PUT: api/systemsettings/BOOKING_ENABLED
-        // SUPER ADMIN ONLY
+        // Requires MANAGE_SYSTEM_SETTINGS permission
         // ==========================================
         [HttpPut("{key}")]
         public async Task<IActionResult> UpdateSetting(

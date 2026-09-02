@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -57,6 +58,33 @@ namespace MmcTaxiApi.Controllers
                    User.IsInRole("TAXI_OPERATIONS");
         }
 
+        private async Task<bool> HasPermissionAsync(
+            string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+            {
+                return true;
+            }
+
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return false;
+            }
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         private async Task<bool> CanViewPaymentAsync(
             Payment payment)
         {
@@ -67,7 +95,7 @@ namespace MmcTaxiApi.Controllers
                 return false;
             }
 
-            if (IsManagementUser())
+            if (await HasPermissionAsync("VIEW_PAYMENTS"))
             {
                 return true;
             }
@@ -89,7 +117,7 @@ namespace MmcTaxiApi.Controllers
         // Management only
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("VIEW_PAYMENTS")]
         public async Task<ActionResult> GetPayments()
         {
             var payments = await _context.Payments
@@ -115,7 +143,7 @@ namespace MmcTaxiApi.Controllers
         // Passenger gets own payments
         // =========================================================
         [HttpGet("my")]
-        [Authorize(Policy = "PassengerOnly")]
+        [HasPermission("VIEW_PAYMENTS")]
         public async Task<ActionResult> GetMyPayments()
         {
             var currentUserId = GetCurrentUserId();
@@ -243,7 +271,7 @@ namespace MmcTaxiApi.Controllers
         // Taxi Operations / Admin / Super Admin
         // =========================================================
         [HttpPost]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("MANAGE_PAYMENTS")]
         public async Task<ActionResult> CreatePayment(
             [FromBody] CreatePaymentRequest request)
         {
@@ -438,7 +466,7 @@ namespace MmcTaxiApi.Controllers
         // Operations / Admin / Super Admin
         // =========================================================
         [HttpPut("{id}/status")]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("MANAGE_PAYMENTS")]
         public async Task<IActionResult> UpdatePaymentStatus(
             int id,
             [FromBody] UpdatePaymentStatusRequest request)
@@ -599,7 +627,7 @@ namespace MmcTaxiApi.Controllers
         // Operations / Admin / Super Admin
         // =========================================================
         [HttpPut("{id}/mark-paid")]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("MANAGE_PAYMENTS")]
         public async Task<IActionResult> MarkPaymentAsPaid(
             int id)
         {

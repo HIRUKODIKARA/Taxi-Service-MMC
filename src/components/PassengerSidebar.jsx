@@ -1,6 +1,14 @@
-import { NavLink } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 
 function PassengerSidebar() {
+  const navigate = useNavigate();
+  const API_BASE_URL = "http://localhost:5171/api";
+
+  const [profile, setProfile] = useState({
+    fullName: "Passenger",
+  });
+
   const menuItems = [
     { name: "Dashboard", icon: "▦", path: "/passenger/dashboard" },
     { name: "Book Taxi", icon: "🚕", path: "/passenger/book-taxi" },
@@ -10,14 +18,89 @@ function PassengerSidebar() {
     { name: "My Profile", icon: "👤", path: "/passenger/profile" },
   ];
 
+  const getToken = () =>
+    localStorage.getItem("token") ||
+    localStorage.getItem("authToken") ||
+    localStorage.getItem("accessToken") ||
+    sessionStorage.getItem("token") ||
+    sessionStorage.getItem("authToken") ||
+    sessionStorage.getItem("accessToken") ||
+    "";
+
+  const loadProfile = async () => {
+    const token = getToken();
+
+    if (!token) {
+      setProfile({ fullName: "Passenger" });
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+
+      setProfile({
+        fullName: data.fullName || "Passenger",
+      });
+    } catch (error) {
+      console.error("Sidebar profile error:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+
+    const handleProfileUpdated = () => loadProfile();
+
+    window.addEventListener(
+      "passenger-profile-updated",
+      handleProfileUpdated
+    );
+
+    return () => {
+      window.removeEventListener(
+        "passenger-profile-updated",
+        handleProfileUpdated
+      );
+    };
+  }, []);
+
+  const handleLogout = () => {
+    ["token", "authToken", "accessToken", "user"].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
+
+    navigate("/login", { replace: true });
+  };
+
+  const initials = useMemo(() => {
+    const parts = (profile.fullName || "Passenger")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+
+    if (parts.length === 0) return "P";
+
+    if (parts.length === 1) {
+      return parts[0].substring(0, 2).toUpperCase();
+    }
+
+    return (
+      parts[0][0] + parts[parts.length - 1][0]
+    ).toUpperCase();
+  }, [profile.fullName]);
+
   return (
     <>
       <style>{`
-        .passenger-layout {
-          min-height: 100vh;
-          background: #f4f7fa;
-        }
-
         .passenger-sidebar {
           position: fixed;
           top: 0;
@@ -30,12 +113,6 @@ function PassengerSidebar() {
           flex-direction: column;
           z-index: 1000;
           font-family: Arial, Helvetica, sans-serif;
-        }
-
-        .passenger-main-content {
-          margin-left: 250px;
-          width: calc(100% - 250px);
-          min-height: 100vh;
         }
 
         .passenger-sidebar-header {
@@ -112,6 +189,7 @@ function PassengerSidebar() {
           padding: 10px;
           background: rgba(255,255,255,0.06);
           border-radius: 8px;
+          margin-bottom: 10px;
         }
 
         .passenger-avatar {
@@ -120,6 +198,7 @@ function PassengerSidebar() {
           display: flex;
           align-items: center;
           justify-content: center;
+          flex-shrink: 0;
           background: #f6c20d;
           color: #0b2946;
           border-radius: 50%;
@@ -140,14 +219,26 @@ function PassengerSidebar() {
           font-size: 8px;
         }
 
+        .passenger-logout-btn {
+          width: 100%;
+          border: 1px solid rgba(255,255,255,.20);
+          background: transparent;
+          color: rgba(255,255,255,.85);
+          padding: 10px 12px;
+          border-radius: 7px;
+          cursor: pointer;
+          font-size: 9px;
+          font-weight: 700;
+        }
+
+        .passenger-logout-btn:hover {
+          background: rgba(255,255,255,.08);
+          color: white;
+        }
+
         @media(max-width: 800px) {
           .passenger-sidebar {
             width: 210px;
-          }
-
-          .passenger-main-content {
-            margin-left: 210px;
-            width: calc(100% - 210px);
           }
         }
       `}</style>
@@ -168,13 +259,14 @@ function PassengerSidebar() {
               key={item.name}
               to={item.path}
               className={({ isActive }) =>
-                `passenger-nav-link ${isActive ? "active" : ""}`
+                `passenger-nav-link ${
+                  isActive ? "active" : ""
+                }`
               }
             >
               <span className="passenger-nav-icon">
                 {item.icon}
               </span>
-
               {item.name}
             </NavLink>
           ))}
@@ -182,13 +274,23 @@ function PassengerSidebar() {
 
         <div className="passenger-sidebar-bottom">
           <div className="passenger-profile-small">
-            <div className="passenger-avatar">NP</div>
+            <div className="passenger-avatar">
+              {initials}
+            </div>
 
             <div>
-              <strong>Nadeesha Perera</strong>
+              <strong>{profile.fullName}</strong>
               <span>Passenger Account</span>
             </div>
           </div>
+
+          <button
+            type="button"
+            className="passenger-logout-btn"
+            onClick={handleLogout}
+          >
+            ↪ Logout
+          </button>
         </div>
       </aside>
     </>

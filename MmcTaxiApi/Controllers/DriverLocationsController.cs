@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -37,6 +38,33 @@ namespace MmcTaxiApi.Controllers
             return userId;
         }
 
+        private async Task<bool> HasPermissionAsync(
+            string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+            {
+                return true;
+            }
+
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return false;
+            }
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         // =========================================================
         // HELPER - Get current driver's profile
         // =========================================================
@@ -68,10 +96,8 @@ namespace MmcTaxiApi.Controllers
                 return false;
             }
 
-            // Super Admin / Admin / Taxi Operations
-            if (User.IsInRole("SUPER_ADMIN") ||
-                User.IsInRole("ADMIN") ||
-                User.IsInRole("TAXI_OPERATIONS"))
+            // Users with VIEW_DRIVER_LOCATION may monitor drivers.
+            if (await HasPermissionAsync("VIEW_DRIVER_LOCATION"))
             {
                 return true;
             }
@@ -112,7 +138,7 @@ namespace MmcTaxiApi.Controllers
         // Super Admin / Admin / Taxi Operations only
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "OperationsOnly")]
+        [HasPermission("VIEW_DRIVER_LOCATION")]
         public async Task<ActionResult> GetAllLocations()
         {
             var locations =
@@ -230,16 +256,14 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            var privileged =
-                User.IsInRole("SUPER_ADMIN") ||
-                User.IsInRole("ADMIN") ||
-                User.IsInRole("TAXI_OPERATIONS");
+            var hasViewPermission =
+                await HasPermissionAsync("VIEW_DRIVER_LOCATION");
 
             var ownDriver =
                 User.IsInRole("DRIVER") &&
                 driver.UserId == currentUserId.Value;
 
-            if (!privileged && !ownDriver)
+            if (!hasViewPermission && !ownDriver)
             {
                 return StatusCode(403, new
                 {
@@ -276,7 +300,7 @@ namespace MmcTaxiApi.Controllers
         // Driver is identified from JWT.
         // =========================================================
         [HttpPost]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("UPDATE_DRIVER_LOCATION")]
         public async Task<ActionResult>
             AddDriverLocation(
                 [FromBody] AddDriverLocationRequest request)
@@ -388,7 +412,7 @@ namespace MmcTaxiApi.Controllers
         // Driver can get own latest location without sending ID.
         // =========================================================
         [HttpGet("my-latest")]
-        [Authorize(Policy = "DriverOnly")]
+        [HasPermission("UPDATE_DRIVER_LOCATION")]
         public async Task<ActionResult>
             GetMyLatestLocation()
         {

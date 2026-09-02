@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 function DriverDashboard() {
   const navigate = useNavigate();
+  const API_BASE_URL = "http://localhost:5171/api";
 
   const [driver, setDriver] = useState(null);
   const [status, setStatus] = useState("OFFLINE");
@@ -74,7 +75,9 @@ function DriverDashboard() {
   };
 
   const loadDashboard = async () => {
-    if (!user) {
+    const token = getToken();
+
+    if (!token) {
       setError("Please login to your driver account.");
       setLoading(false);
       return;
@@ -85,7 +88,7 @@ function DriverDashboard() {
       setError("");
 
       const driverResponse = await fetch(
-        `http://localhost:5171/api/drivers/user/${user.userId}`,
+        `${API_BASE_URL}/drivers/user/${user.userId}`,
         {
           headers: getHeaders(),
         }
@@ -108,20 +111,20 @@ function DriverDashboard() {
         vehicleTypesResponse,
         notificationsResponse,
       ] = await Promise.all([
-        fetch("http://localhost:5171/api/bookings", {
+        fetch(`${API_BASE_URL}/bookings/my`, {
           headers: getHeaders(),
         }),
 
-        fetch("http://localhost:5171/api/vehicles", {
+        fetch(`${API_BASE_URL}/vehicles`, {
           headers: getHeaders(),
         }),
 
-        fetch("http://localhost:5171/api/vehicletypes", {
+        fetch(`${API_BASE_URL}/vehicletypes`, {
           headers: getHeaders(),
         }),
 
         fetch(
-          `http://localhost:5171/api/notifications/user/${user.userId}`,
+          `${API_BASE_URL}/notifications/me`,
           {
             headers: getHeaders(),
           }
@@ -132,7 +135,7 @@ function DriverDashboard() {
         throw new Error("Unable to load driver bookings.");
       }
 
-      const allBookings = await bookingsResponse.json();
+      const myBookings = await bookingsResponse.json();
 
       const allVehicles = vehiclesResponse.ok
         ? await vehiclesResponse.json()
@@ -146,7 +149,7 @@ function DriverDashboard() {
         ? await notificationsResponse.json()
         : [];
 
-      const driverBookings = allBookings
+      const driverBookings = myBookings
         .filter(
           (booking) =>
             Number(booking.assignedDriverId) ===
@@ -207,7 +210,7 @@ function DriverDashboard() {
       setMessage("");
 
       const response = await fetch(
-        `http://localhost:5171/api/drivers/${driver.driverId}/status`,
+        `${API_BASE_URL}/drivers/${driver.driverId}/status`,
         {
           method: "PUT",
           headers: getHeaders(),
@@ -755,9 +758,11 @@ function DriverDashboard() {
                   Available
                 </option>
 
-                <option value="ON_RIDE">
-                  On Ride
-                </option>
+                {status === "ON_RIDE" && (
+                  <option value="ON_RIDE">
+                    On Ride
+                  </option>
+                )}
 
                 <option value="OFFLINE">
                   Offline

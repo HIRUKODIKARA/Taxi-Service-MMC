@@ -2,6 +2,7 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using MmcTaxiApi.Authorization;
 using MmcTaxiApi.Data;
 using MmcTaxiApi.Models;
 
@@ -70,6 +71,33 @@ namespace MmcTaxiApi.Controllers
                    User.IsInRole("ADMIN");
         }
 
+        private async Task<bool> HasPermissionAsync(
+            string permissionName)
+        {
+            if (User.IsInRole("SUPER_ADMIN"))
+            {
+                return true;
+            }
+
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return false;
+            }
+
+            return await (
+                from userRole in _context.UserRoles
+                join rolePermission in _context.RolePermissions
+                    on userRole.RoleId equals rolePermission.RoleId
+                join permission in _context.Permissions
+                    on rolePermission.PermissionId equals permission.PermissionId
+                where userRole.UserId == currentUserId.Value
+                      && permission.PermissionName == permissionName
+                select permission
+            ).AnyAsync();
+        }
+
         // =========================================================
         // HELPER - Check whether current user owns driver profile
         // =========================================================
@@ -93,7 +121,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpGet]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("VERIFY_DRIVERS")]
         public async Task<ActionResult> GetDocuments()
         {
             var documents = await _context.DriverDocuments
@@ -131,14 +159,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                !await IsOwnDriverAsync(document.DriverId))
+            if (!await IsOwnDriverAsync(document.DriverId))
             {
-                return StatusCode(403, new
+                var canVerifyDrivers =
+                    await HasPermissionAsync("VERIFY_DRIVERS");
+
+                if (!canVerifyDrivers)
                 {
-                    message =
-                        "You do not have permission to view this document."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have VERIFY_DRIVERS permission."
+                    });
+                }
             }
 
             return Ok(new
@@ -172,14 +205,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                !await IsOwnDriverAsync(driverId))
+            if (!await IsOwnDriverAsync(driverId))
             {
-                return StatusCode(403, new
+                var canVerifyDrivers =
+                    await HasPermissionAsync("VERIFY_DRIVERS");
+
+                if (!canVerifyDrivers)
                 {
-                    message =
-                        "You do not have permission to view these documents."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have VERIFY_DRIVERS permission."
+                    });
+                }
             }
 
             var documents = await _context.DriverDocuments
@@ -238,14 +276,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                driver.UserId != currentUserId.Value)
+            if (driver.UserId != currentUserId.Value)
             {
-                return StatusCode(403, new
+                var canManageDrivers =
+                    await HasPermissionAsync("MANAGE_DRIVERS");
+
+                if (!canManageDrivers)
                 {
-                    message =
-                        "You can upload documents only for your own driver account."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You can upload documents only for your own driver account unless you have MANAGE_DRIVERS permission."
+                    });
+                }
             }
 
             if (file == null ||
@@ -461,14 +504,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                !await IsOwnDriverAsync(document.DriverId))
+            if (!await IsOwnDriverAsync(document.DriverId))
             {
-                return StatusCode(403, new
+                var canVerifyDrivers =
+                    await HasPermissionAsync("VERIFY_DRIVERS");
+
+                if (!canVerifyDrivers)
                 {
-                    message =
-                        "You do not have permission to access this document."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have VERIFY_DRIVERS permission."
+                    });
+                }
             }
 
             if (string.IsNullOrWhiteSpace(document.FilePath))
@@ -551,7 +599,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpPut("{id}/approve")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("VERIFY_DRIVERS")]
         public async Task<IActionResult> ApproveDocument(
             int id)
         {
@@ -650,7 +698,7 @@ namespace MmcTaxiApi.Controllers
         // Admin / Super Admin only
         // =========================================================
         [HttpPut("{id}/reject")]
-        [Authorize(Policy = "AdminOnly")]
+        [HasPermission("VERIFY_DRIVERS")]
         public async Task<IActionResult> RejectDocument(
             int id,
             [FromBody] RejectDocumentRequest request)
@@ -784,14 +832,19 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (!IsAdminOrSuperAdmin() &&
-                !await IsOwnDriverAsync(driverId))
+            if (!await IsOwnDriverAsync(driverId))
             {
-                return StatusCode(403, new
+                var canVerifyDrivers =
+                    await HasPermissionAsync("VERIFY_DRIVERS");
+
+                if (!canVerifyDrivers)
                 {
-                    message =
-                        "You do not have permission to view this verification status."
-                });
+                    return StatusCode(403, new
+                    {
+                        message =
+                            "You do not have VERIFY_DRIVERS permission."
+                    });
+                }
             }
 
             var documents = await _context.DriverDocuments

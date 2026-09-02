@@ -1,527 +1,803 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+const API_BASE_URL = "http://localhost:5171/api";
+
+const getToken = () =>
+  localStorage.getItem("token") ||
+  localStorage.getItem("authToken") ||
+  localStorage.getItem("accessToken") ||
+  sessionStorage.getItem("token") ||
+  sessionStorage.getItem("authToken") ||
+  sessionStorage.getItem("accessToken") ||
+  "";
+
+const authHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${getToken()}`,
+});
+
+const safeJson = async (response) => {
+  const raw = await response.text();
+
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {
+      message: raw,
+    };
+  }
+};
+
+const formatText = (value) =>
+  (value ?? "—")
+    .toString()
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+const timeAgo = (value) => {
+  if (!value) return "";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  const minutes = Math.floor(
+    (Date.now() - date.getTime()) / 60000
+  );
+
+  if (minutes < 1) {
+    return "Just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes} minute${
+      minutes === 1 ? "" : "s"
+    } ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours} hour${
+      hours === 1 ? "" : "s"
+    } ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 7) {
+    return `${days} day${
+      days === 1 ? "" : "s"
+    } ago`;
+  }
+
+  return date.toLocaleString();
+};
 
 function OperationsNotifications() {
-  const [filter, setFilter] = useState("All");
+  const [items, setItems] = useState([]);
+  const [filter, setFilter] = useState("ALL");
 
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      type: "Booking",
-      title: "New Website Booking",
-      message:
-        "Booking BK001 has been created by Nadeesha Perera for Colombo.",
-      time: "2 minutes ago",
-      read: false,
-    },
-    {
-      id: 2,
-      type: "Driver",
-      title: "Driver Accepted Booking",
-      message:
-        "Kasun Perera accepted booking BK001. Vehicle WP CAB-1234 assigned.",
-      time: "5 minutes ago",
-      read: false,
-    },
-    {
-      id: 3,
-      type: "Booking",
-      title: "Phone Booking Created",
-      message:
-        "Booking BK002 was created by Taxi Operations through a phone call.",
-      time: "12 minutes ago",
-      read: true,
-    },
-    {
-      id: 4,
-      type: "Vehicle",
-      title: "Vehicle Became Available",
-      message:
-        "Vehicle WP CAA-7788 is now available for a new booking.",
-      time: "20 minutes ago",
-      read: true,
-    },
-    {
-      id: 5,
-      type: "Driver",
-      title: "Driver Went Offline",
-      message:
-        "Driver Amal Jay is currently offline. Vehicle WP BCD-7890 is unavailable.",
-      time: "35 minutes ago",
-      read: false,
-    },
-    {
-      id: 6,
-      type: "System",
-      title: "GPS Connection Lost",
-      message:
-        "GPS connection for vehicle WP BCD-7890 has been disconnected.",
-      time: "40 minutes ago",
-      read: true,
-    },
-  ]);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  const filteredNotifications =
-    filter === "All"
-      ? notifications
-      : notifications.filter(
-          (notification) => notification.type === filter
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  /* =========================================================
+     LOAD NOTIFICATIONS
+  ========================================================= */
+
+  const loadNotifications = async (
+    showSuccess = false
+  ) => {
+    const token = getToken();
+
+    if (!token) {
+      setError(
+        "Please login to your Taxi Operator account."
+      );
+
+      setLoading(false);
+
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `${API_BASE_URL}/notifications/me`,
+        {
+          headers: authHeaders(),
+        }
+      );
+
+      const data =
+        await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            "Unable to load notifications."
         );
+      }
 
-  const unreadCount = notifications.filter(
-    (notification) => !notification.read
+      const notifications =
+        Array.isArray(data)
+          ? [...data].sort(
+              (a, b) =>
+                new Date(
+                  b.createdAt || 0
+                ) -
+                new Date(
+                  a.createdAt || 0
+                )
+            )
+          : [];
+
+      setItems(notifications);
+
+      if (showSuccess) {
+        setSuccess(
+          `Notifications refreshed successfully. ${notifications.length} notification(s) loaded.`
+        );
+      }
+    } catch (err) {
+      console.error(
+        "Operations notification load error:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to load notifications."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications(false);
+  }, []);
+
+  /* =========================================================
+     MARK ONE AS READ
+  ========================================================= */
+
+  const markRead = async (
+    notificationId
+  ) => {
+    try {
+      setActionLoading(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `${API_BASE_URL}/notifications/${notificationId}/read`,
+        {
+          method: "PUT",
+          headers: authHeaders(),
+        }
+      );
+
+      const data =
+        await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            "Unable to mark notification as read."
+        );
+      }
+
+      setItems((current) =>
+        current.map((notification) =>
+          Number(
+            notification.notificationId
+          ) ===
+          Number(notificationId)
+            ? {
+                ...notification,
+                isRead: true,
+              }
+            : notification
+        )
+      );
+
+      setSuccess(
+        data?.message ||
+          "Notification marked as read."
+      );
+    } catch (err) {
+      console.error(
+        "Mark notification read error:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to update notification."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  /* =========================================================
+     MARK ALL READ
+  ========================================================= */
+
+  const markAllRead = async () => {
+    try {
+      setActionLoading(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(
+        `${API_BASE_URL}/notifications/me/read-all`,
+        {
+          method: "PUT",
+          headers: authHeaders(),
+        }
+      );
+
+      const data =
+        await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            "Unable to mark all notifications as read."
+        );
+      }
+
+      setItems((current) =>
+        current.map(
+          (notification) => ({
+            ...notification,
+            isRead: true,
+          })
+        )
+      );
+
+      setSuccess(
+        data?.message ||
+          "All notifications marked as read."
+      );
+    } catch (err) {
+      console.error(
+        "Mark all notifications error:",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Unable to update notifications."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  /* =========================================================
+     FILTER
+  ========================================================= */
+
+  const types = useMemo(
+    () => [
+      "ALL",
+      ...Array.from(
+        new Set(
+          items
+            .map(
+              (notification) =>
+                notification.notificationType
+            )
+            .filter(Boolean)
+        )
+      ),
+    ],
+    [items]
+  );
+
+  const filtered = useMemo(
+    () =>
+      filter === "ALL"
+        ? items
+        : items.filter(
+            (notification) =>
+              notification.notificationType ===
+              filter
+          ),
+    [items, filter]
+  );
+
+  const unread = items.filter(
+    (notification) =>
+      !notification.isRead
   ).length;
 
-  const markAsRead = (id) => {
-    setNotifications(
-      notifications.map((notification) =>
-        notification.id === id
-          ? { ...notification, read: true }
-          : notification
-      )
-    );
-  };
+  const read =
+    items.length - unread;
 
-  const markAllAsRead = () => {
-    setNotifications(
-      notifications.map((notification) => ({
-        ...notification,
-        read: true,
-      }))
-    );
-  };
+  /* =========================================================
+     ICON
+  ========================================================= */
 
   const getIcon = (type) => {
-    if (type === "Booking") return "📋";
-    if (type === "Driver") return "👤";
-    if (type === "Vehicle") return "🚗";
-    return "⚙️";
+    switch (type) {
+      case "BOOKING":
+        return "📋";
+
+      case "DRIVER":
+        return "👤";
+
+      case "VEHICLE":
+        return "🚗";
+
+      case "PAYMENT":
+        return "💳";
+
+      case "SYSTEM":
+        return "🔔";
+
+      default:
+        return "🔔";
+    }
   };
 
-  const getTypeClass = (type) => {
-    return `notification-type ${type.toLowerCase()}`;
-  };
+  /* =========================================================
+     UI
+  ========================================================= */
 
   return (
     <>
       <style>{`
-        .notifications-page {
-          min-height: 100vh;
+        .on-page {
           padding: 30px;
+          min-height: 100vh;
           background: #f4f7fa;
           font-family: Arial, Helvetica, sans-serif;
-        }
-
-        .notifications-header {
-          display: flex;
-          align-items: flex-start;
-          justify-content: space-between;
-          gap: 20px;
-          margin-bottom: 24px;
-        }
-
-        .notifications-header h1 {
-          margin: 0 0 6px;
           color: #0b2946;
-          font-size: 28px;
-          font-weight: 800;
         }
 
-        .notifications-header p {
+        .on-head {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 15px;
+          margin-bottom: 20px;
+        }
+
+        .on-head h1 {
+          margin: 0 0 6px;
+          font-size: 28px;
+        }
+
+        .on-head p {
           margin: 0;
           color: #7b8794;
-          font-size: 13px;
+          font-size: 12px;
         }
 
-        .mark-all-btn {
+        .on-actions {
+          display: flex;
+          gap: 8px;
+        }
+
+        .on-action-btn {
           border: none;
           background: #0b2946;
           color: white;
-          padding: 10px 15px;
+          padding: 10px 14px;
           border-radius: 6px;
-          font-size: 10px;
           font-weight: 700;
           cursor: pointer;
+          min-width: 105px;
         }
 
-        .mark-all-btn:hover {
-          background: #123d64;
+        .on-action-btn:hover:not(:disabled) {
+          background: #163e63;
         }
 
-        .notifications-summary {
+        .on-action-btn:disabled {
+          opacity: .45;
+          cursor: not-allowed;
+        }
+
+        .on-summary {
           display: grid;
-          grid-template-columns: repeat(4, 1fr);
-          gap: 16px;
-          margin-bottom: 22px;
-        }
-
-        .notification-summary-card {
-          background: white;
-          border: 1px solid #e3e8ed;
-          border-radius: 9px;
-          padding: 18px;
-          box-shadow: 0 3px 12px rgba(11,41,70,0.04);
-        }
-
-        .notification-summary-card span {
-          color: #89949e;
-          font-size: 10px;
-        }
-
-        .notification-summary-card h3 {
-          margin: 7px 0 0;
-          color: #0b2946;
-          font-size: 23px;
-        }
-
-        .notification-filters {
-          display: flex;
-          gap: 9px;
-          flex-wrap: wrap;
-          margin-bottom: 18px;
-          padding: 13px;
-          background: white;
-          border: 1px solid #e3e8ed;
-          border-radius: 9px;
-        }
-
-        .notification-filter-btn {
-          border: 1px solid #d8e0e6;
-          background: white;
-          color: #607080;
-          padding: 8px 13px;
-          border-radius: 20px;
-          font-size: 10px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .notification-filter-btn.active {
-          background: #f6c20d;
-          border-color: #f6c20d;
-          color: #0b2946;
-        }
-
-        .notifications-list {
-          display: flex;
-          flex-direction: column;
-          gap: 11px;
-        }
-
-        .notification-card {
-          display: grid;
-          grid-template-columns: 50px 1fr auto;
+          grid-template-columns: repeat(3, 1fr);
           gap: 15px;
-          align-items: center;
-          padding: 17px;
+          margin-bottom: 17px;
+        }
+
+        .on-stat {
           background: white;
           border: 1px solid #e2e7ec;
           border-radius: 9px;
-          box-shadow: 0 3px 12px rgba(11,41,70,0.04);
+          padding: 18px;
         }
 
-        .notification-card.unread {
+        .on-stat span {
+          font-size: 9px;
+          color: #89949e;
+        }
+
+        .on-stat h2 {
+          margin: 6px 0 0;
+          font-size: 22px;
+        }
+
+        .on-message {
+          padding: 11px 13px;
+          border-radius: 7px;
+          margin-bottom: 14px;
+          font-size: 10px;
+        }
+
+        .on-error {
+          background: #fff1f1;
+          border: 1px solid #efc1c1;
+          color: #a63737;
+        }
+
+        .on-success {
+          background: #edf9f0;
+          border: 1px solid #b8e2c1;
+          color: #276638;
+        }
+
+        .on-filters {
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          background: white;
+          border: 1px solid #e2e7ec;
+          border-radius: 9px;
+          padding: 12px;
+          margin-bottom: 14px;
+        }
+
+        .on-filter {
+          border: 1px solid #d8e0e6;
+          background: white;
+          padding: 7px 11px;
+          border-radius: 20px;
+          font-size: 9px;
+          cursor: pointer;
+        }
+
+        .on-filter.active {
+          background: #f6c20d;
+          border-color: #f6c20d;
+          font-weight: 800;
+        }
+
+        .on-list {
+          display: flex;
+          flex-direction: column;
+          gap: 9px;
+        }
+
+        .on-card {
+          display: grid;
+          grid-template-columns:
+            45px 1fr auto;
+          gap: 13px;
+          align-items: center;
+
+          background: white;
+          border: 1px solid #e2e7ec;
+          border-radius: 9px;
+
+          padding: 15px;
+        }
+
+        .on-card.unread {
           border-left: 4px solid #f6c20d;
           background: #fffdf5;
         }
 
-        .notification-icon {
-          width: 46px;
-          height: 46px;
+        .on-icon {
+          width: 42px;
+          height: 42px;
+
+          border-radius: 8px;
+
+          background: #eef3f7;
+
           display: flex;
           align-items: center;
           justify-content: center;
-          background: #f1f5f8;
-          border-radius: 9px;
-          font-size: 20px;
+
+          font-size: 18px;
         }
 
-        .notification-content {
-          min-width: 0;
+        .on-card h3 {
+          margin: 0 0 4px;
+
+          font-size: 12px;
         }
 
-        .notification-top {
-          display: flex;
-          align-items: center;
-          gap: 9px;
-          margin-bottom: 5px;
-        }
+        .on-card p {
+          margin: 0 0 5px;
 
-        .notification-top h3 {
-          margin: 0;
-          color: #0b2946;
-          font-size: 13px;
-          font-weight: 800;
-        }
-
-        .notification-type {
-          display: inline-block;
-          padding: 4px 8px;
-          border-radius: 20px;
-          font-size: 8px;
-          font-weight: 700;
-        }
-
-        .notification-type.booking {
-          background: #e6f0ff;
-          color: #2b64a1;
-        }
-
-        .notification-type.driver {
-          background: #e6f6eb;
-          color: #237c42;
-        }
-
-        .notification-type.vehicle {
-          background: #fff4d7;
-          color: #8a6b12;
-        }
-
-        .notification-type.system {
-          background: #f2e8ff;
-          color: #7150a1;
-        }
-
-        .notification-content p {
-          margin: 0 0 6px;
           color: #63717d;
-          font-size: 11px;
-          line-height: 1.55;
+
+          font-size: 10px;
         }
 
-        .notification-time {
+        .on-card small {
           color: #9aa3ac;
-          font-size: 9px;
+
+          font-size: 8px;
         }
 
-        .notification-action {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-        }
-
-        .notification-unread-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #f6c20d;
-        }
-
-        .notification-read-btn {
+        .on-read {
           border: 1px solid #0b2946;
           background: white;
           color: #0b2946;
-          padding: 7px 10px;
+
+          padding: 7px 9px;
+
           border-radius: 5px;
-          font-size: 9px;
+
+          font-size: 8px;
           font-weight: 700;
+
           cursor: pointer;
         }
 
-        .notification-read-btn:hover {
+        .on-read:hover:not(:disabled) {
           background: #0b2946;
           color: white;
         }
 
-        .notification-read-label {
-          color: #8b969f;
-          font-size: 9px;
-          font-weight: 700;
+        .on-read-status {
+          font-size: 8px;
+          color: #87929c;
         }
 
-        .notifications-empty {
-          padding: 45px 20px;
-          text-align: center;
+        .on-loading,
+        .on-empty {
           background: white;
-          border: 1px solid #e3e8ed;
+          border: 1px solid #e2e7ec;
           border-radius: 9px;
-          color: #89949e;
-          font-size: 12px;
+          padding: 30px;
+          text-align: center;
+          font-size: 11px;
+          color: #7f8a94;
         }
 
-        @media (max-width: 900px) {
-          .notifications-summary {
-            grid-template-columns: repeat(2, 1fr);
-          }
-
-          .notification-card {
-            grid-template-columns: 45px 1fr;
-          }
-
-          .notification-action {
-            grid-column: 2;
-          }
-        }
-
-        @media (max-width: 600px) {
-          .notifications-page {
+        @media(max-width:700px) {
+          .on-page {
             padding: 18px;
           }
 
-          .notifications-header {
+          .on-summary {
+            grid-template-columns: 1fr;
+          }
+
+          .on-head {
             flex-direction: column;
           }
 
-          .mark-all-btn {
+          .on-actions {
             width: 100%;
           }
 
-          .notifications-summary {
-            grid-template-columns: 1fr;
+          .on-action-btn {
+            flex: 1;
           }
 
-          .notification-card {
-            grid-template-columns: 1fr;
+          .on-card {
+            grid-template-columns:
+              40px 1fr;
           }
 
-          .notification-icon {
-            width: 40px;
-            height: 40px;
-          }
-
-          .notification-action {
-            grid-column: auto;
+          .on-card > button,
+          .on-read-status {
+            grid-column: 2;
           }
         }
       `}</style>
 
-      <main className="notifications-page">
-        <div className="notifications-header">
+      <main className="on-page">
+
+        <div className="on-head">
+
           <div>
             <h1>Notifications</h1>
 
             <p>
-              View operational booking, driver, vehicle and system
-              notifications.
+              Operational notifications for your
+              Taxi Operator account.
             </p>
           </div>
 
-          <button
-            className="mark-all-btn"
-            onClick={markAllAsRead}
-          >
-            Mark All as Read
-          </button>
-        </div>
+          <div className="on-actions">
 
-        <div className="notifications-summary">
-          <div className="notification-summary-card">
-            <span>TOTAL NOTIFICATIONS</span>
-            <h3>{notifications.length}</h3>
-          </div>
-
-          <div className="notification-summary-card">
-            <span>UNREAD</span>
-            <h3>{unreadCount}</h3>
-          </div>
-
-          <div className="notification-summary-card">
-            <span>BOOKING ALERTS</span>
-
-            <h3>
-              {
-                notifications.filter(
-                  (notification) =>
-                    notification.type === "Booking"
-                ).length
-              }
-            </h3>
-          </div>
-
-          <div className="notification-summary-card">
-            <span>DRIVER ALERTS</span>
-
-            <h3>
-              {
-                notifications.filter(
-                  (notification) =>
-                    notification.type === "Driver"
-                ).length
-              }
-            </h3>
-          </div>
-        </div>
-
-        <div className="notification-filters">
-          {[
-            "All",
-            "Booking",
-            "Driver",
-            "Vehicle",
-            "System",
-          ].map((item) => (
             <button
-              key={item}
-              className={`notification-filter-btn ${
-                filter === item ? "active" : ""
-              }`}
-              onClick={() => setFilter(item)}
+              type="button"
+              className="on-action-btn"
+              onClick={() =>
+                loadNotifications(true)
+              }
+              disabled={
+                loading ||
+                actionLoading
+              }
             >
-              {item}
+              {loading
+                ? "Refreshing..."
+                : "Refresh"}
+            </button>
+
+            <button
+              type="button"
+              className="on-action-btn"
+              onClick={markAllRead}
+              disabled={
+                unread === 0 ||
+                actionLoading
+              }
+              title={
+                unread === 0
+                  ? "There are no unread notifications."
+                  : "Mark all unread notifications as read."
+              }
+            >
+              {actionLoading
+                ? "Updating..."
+                : "Mark All Read"}
+            </button>
+
+          </div>
+        </div>
+
+        {error && (
+          <div className="on-message on-error">
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="on-message on-success">
+            {success}
+          </div>
+        )}
+
+        <div className="on-summary">
+
+          <div className="on-stat">
+            <span>TOTAL</span>
+            <h2>{items.length}</h2>
+          </div>
+
+          <div className="on-stat">
+            <span>UNREAD</span>
+            <h2>{unread}</h2>
+          </div>
+
+          <div className="on-stat">
+            <span>READ</span>
+            <h2>{read}</h2>
+          </div>
+
+        </div>
+
+        <div className="on-filters">
+
+          {types.map((type) => (
+            <button
+              type="button"
+              key={type}
+              className={`on-filter ${
+                filter === type
+                  ? "active"
+                  : ""
+              }`}
+              onClick={() =>
+                setFilter(type)
+              }
+            >
+              {type === "ALL"
+                ? "All"
+                : formatText(type)}
             </button>
           ))}
+
         </div>
 
-        <div className="notifications-list">
-          {filteredNotifications.map((notification) => (
-            <div
-              key={notification.id}
-              className={`notification-card ${
-                !notification.read ? "unread" : ""
-              }`}
-            >
-              <div className="notification-icon">
-                {getIcon(notification.type)}
-              </div>
+        {loading ? (
+          <div className="on-loading">
+            Loading notifications...
+          </div>
+        ) : (
+          <div className="on-list">
 
-              <div className="notification-content">
-                <div className="notification-top">
-                  <h3>{notification.title}</h3>
-
-                  <span
-                    className={getTypeClass(
-                      notification.type
+            {filtered.map(
+              (notification) => (
+                <div
+                  key={
+                    notification.notificationId
+                  }
+                  className={`on-card ${
+                    !notification.isRead
+                      ? "unread"
+                      : ""
+                  }`}
+                >
+                  <div className="on-icon">
+                    {getIcon(
+                      notification.notificationType
                     )}
-                  >
-                    {notification.type}
-                  </span>
-                </div>
+                  </div>
 
-                <p>{notification.message}</p>
+                  <div>
+                    <h3>
+                      {notification.title ||
+                        formatText(
+                          notification.notificationType
+                        )}
+                    </h3>
 
-                <span className="notification-time">
-                  {notification.time}
-                </span>
-              </div>
+                    <p>
+                      {notification.message}
+                    </p>
 
-              <div className="notification-action">
-                {!notification.read ? (
-                  <>
-                    <span className="notification-unread-dot"></span>
+                    <small>
+                      {timeAgo(
+                        notification.createdAt
+                      )}
+                    </small>
+                  </div>
 
+                  {!notification.isRead ? (
                     <button
-                      className="notification-read-btn"
+                      type="button"
+                      className="on-read"
+                      disabled={
+                        actionLoading
+                      }
                       onClick={() =>
-                        markAsRead(notification.id)
+                        markRead(
+                          notification.notificationId
+                        )
                       }
                     >
                       Mark Read
                     </button>
-                  </>
-                ) : (
-                  <span className="notification-read-label">
-                    Read
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
+                  ) : (
+                    <span className="on-read-status">
+                      Read
+                    </span>
+                  )}
+                </div>
+              )
+            )}
 
-          {filteredNotifications.length === 0 && (
-            <div className="notifications-empty">
-              No notifications found.
-            </div>
-          )}
-        </div>
+            {filtered.length === 0 && (
+              <div className="on-empty">
+                No notifications found.
+              </div>
+            )}
+
+          </div>
+        )}
+
       </main>
     </>
   );

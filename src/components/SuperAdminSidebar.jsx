@@ -1,85 +1,244 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 
 function SuperAdminSidebar() {
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("user");
+
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("authToken");
+    sessionStorage.removeItem("accessToken");
+    sessionStorage.removeItem("user");
+
+    navigate("/login", { replace: true });
+  };
+
+  const menuClass = ({ isActive }) =>
+    isActive ? "sa-menu-link active" : "sa-menu-link";
+
   return (
-    <aside className="sa-sidebar">
+    <>
+      <style>{`
+        .sa-sidebar {
+          position: fixed;
+          top: 0;
+          left: 0;
+          width: 285px;
+          height: 100vh;
+          background: #0b2946;
+          display: flex;
+          flex-direction: column;
+          z-index: 1000;
+          overflow-y: auto;
+          font-family: Arial, Helvetica, sans-serif;
+        }
 
-      <div className="sa-logo-area">
+        .sa-logo-area {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 24px 22px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
 
-        <img
-          src="/logo.png"
-          alt="Makumbura MMC"
-          className="sa-logo"
-        />
+        .sa-logo {
+          width: 48px;
+          height: 48px;
+          object-fit: contain;
+          background: white;
+          border-radius: 9px;
+          padding: 4px;
+        }
 
-        <div>
-          <h3>MMC Taxi</h3>
-          <span>Super Admin</span>
+        .sa-logo-area h3 {
+          margin: 0 0 4px;
+          color: white;
+          font-size: 17px;
+          font-weight: 800;
+        }
+
+        .sa-logo-area span {
+          color: #f6c20d;
+          font-size: 10px;
+          font-weight: 700;
+        }
+
+        .sa-menu {
+          flex: 1;
+          padding: 18px 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 5px;
+        }
+
+        .sa-menu-link {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 11px 13px;
+          border-radius: 7px;
+          color: #d9e3ec;
+          text-decoration: none;
+          font-size: 11px;
+          font-weight: 600;
+          transition: 0.2s ease;
+        }
+
+        .sa-menu-link:hover {
+          background: rgba(255, 255, 255, 0.08);
+          color: white;
+        }
+
+        .sa-menu-link.active {
+          background: #f6c20d;
+          color: #0b2946;
+          font-weight: 800;
+        }
+
+        .sa-logout-btn {
+          margin: 12px;
+          padding: 11px 14px;
+          border: 1px solid rgba(255, 255, 255, 0.2);
+          border-radius: 7px;
+          background: transparent;
+          color: white;
+          font-size: 11px;
+          font-weight: 700;
+          text-align: left;
+          cursor: pointer;
+        }
+
+        .sa-logout-btn:hover {
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        @media (max-width: 1100px) {
+          .sa-sidebar {
+            width: 250px;
+          }
+        }
+      `}</style>
+
+      <aside className="sa-sidebar">
+        <div className="sa-logo-area">
+          <img
+            src="/logo.png"
+            alt="Makumbura MMC"
+            className="sa-logo"
+          />
+
+          <div>
+            <h3>MMC Taxi</h3>
+            <span>Super Admin</span>
+          </div>
         </div>
 
-      </div>
+        <nav className="sa-menu">
+          <NavLink
+            to="/super-admin/dashboard"
+            className={menuClass}
+          >
+            🏠 Dashboard
+          </NavLink>
 
-      <nav className="sa-menu">
+          <NavLink
+            to="/super-admin/admins"
+            className={menuClass}
+          >
+            👨‍💼 Admin Management
+          </NavLink>
 
-        <NavLink to="/super-admin/dashboard">
-          🏠 Dashboard
-        </NavLink>
+          <NavLink
+            to="/super-admin/operations"
+            className={menuClass}
+          >
+            🎧 Taxi Operations
+          </NavLink>
 
-        <NavLink to="/super-admin/admins">
-          👨‍💼 Admin Management
-        </NavLink>
+          <NavLink
+            to="/super-admin/users"
+            className={menuClass}
+          >
+            👥 Users
+          </NavLink>
 
-        <NavLink to="/super-admin/operations">
-          🎧 Taxi Operations
-        </NavLink>
+          <NavLink
+            to="/super-admin/drivers"
+            className={menuClass}
+          >
+            🚖 Drivers
+          </NavLink>
 
-        <NavLink to="/super-admin/users">
-          👥 Users
-        </NavLink>
+          <NavLink
+            to="/super-admin/driver-verification"
+            className={menuClass}
+          >
+            ✅ Driver Verification
+          </NavLink>
 
-        <NavLink to="/super-admin/drivers">
-          🚖 Drivers
-        </NavLink>
+          <NavLink
+            to="/super-admin/vehicles"
+            className={menuClass}
+          >
+            🚗 Vehicles
+          </NavLink>
 
-        <NavLink to="/super-admin/driver-verification">
-          ✅ Driver Verification
-        </NavLink>
+          <NavLink
+            to="/super-admin/vehicle-types"
+            className={menuClass}
+          >
+            🚘 Vehicle Types
+          </NavLink>
 
-        <NavLink to="/super-admin/vehicles">
-          🚗 Vehicles
-        </NavLink>
+          <NavLink
+            to="/super-admin/bookings"
+            className={menuClass}
+          >
+            📋 Bookings
+          </NavLink>
 
-        <NavLink to="/super-admin/vehicle-types">
-          🚘 Vehicle Types
-        </NavLink>
+          <NavLink
+            to="/super-admin/permissions"
+            className={menuClass}
+          >
+            🔐 Roles & Permissions
+          </NavLink>
 
-        <NavLink to="/super-admin/bookings">
-          📋 Bookings
-        </NavLink>
+          <NavLink
+            to="/super-admin/reports"
+            className={menuClass}
+          >
+            📊 Reports
+          </NavLink>
 
-        <NavLink to="/super-admin/permissions">
-          🔐 Roles & Permissions
-        </NavLink>
+          <NavLink
+            to="/super-admin/activity"
+            className={menuClass}
+          >
+            🕒 Activity Monitoring
+          </NavLink>
 
-        <NavLink to="/super-admin/reports">
-          📊 Reports
-        </NavLink>
+          <NavLink
+            to="/super-admin/settings"
+            className={menuClass}
+          >
+            ⚙️ System Settings
+          </NavLink>
+        </nav>
 
-        <NavLink to="/super-admin/activity">
-          🕒 Activity Monitoring
-        </NavLink>
-
-        <NavLink to="/super-admin/settings">
-          ⚙️ System Settings
-        </NavLink>
-
-      </nav>
-
-      <NavLink to="/" className="sa-logout">
-        ↪ Logout
-      </NavLink>
-
-    </aside>
+        <button
+          type="button"
+          className="sa-logout-btn"
+          onClick={handleLogout}
+        >
+          ↪ Logout
+        </button>
+      </aside>
+    </>
   );
 }
 

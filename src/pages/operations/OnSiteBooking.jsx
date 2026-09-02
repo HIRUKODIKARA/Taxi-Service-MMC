@@ -1,685 +1,651 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+
+const API_BASE_URL = "http://localhost:5171/api";
+
+const getToken = () =>
+  localStorage.getItem("token") ||
+  localStorage.getItem("authToken") ||
+  localStorage.getItem("accessToken") ||
+  sessionStorage.getItem("token") ||
+  sessionStorage.getItem("authToken") ||
+  sessionStorage.getItem("accessToken") ||
+  "";
+
+const authHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${getToken()}`,
+});
+
+const safeJson = async (response) => {
+  const raw = await response.text();
+
+  if (!raw) return {};
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { message: raw };
+  }
+};
+
+const formatText = (value) =>
+  (value ?? "—")
+    .toString()
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
 
 function OnSiteBooking() {
-  const [formData, setFormData] = useState({
+  const [vehicleTypes, setVehicleTypes] = useState([]);
+
+  const [form, setForm] = useState({
     passengerName: "",
-    phone: "",
-    pickup: "Makumbura Multimodal Center",
+    passengerPhone: "",
+    pickupLocation: "Makumbura Multimodal Center",
     destination: "",
-    vehicleType: "Car",
-    passengers: "1",
-    notes: "",
+    bookingDate: "",
+    bookingTime: "",
+    vehicleTypeId: "",
   });
 
   const [confirmation, setConfirmation] = useState(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [loadingVehicleTypes, setLoadingVehicleTypes] = useState(true);
 
-  const availableVehicles = {
-    Car: {
-      driver: "Kasun Perera",
-      vehicle: "WP CAB-1234",
-      status: "Available",
-    },
+  /* =========================================================
+     LOAD VEHICLE TYPES
+  ========================================================= */
 
-    "Three-Wheeler": {
-      driver: "Nimal Silva",
-      vehicle: "WP AAB-4567",
-      status: "Available",
-    },
+  const loadVehicleTypes = async () => {
+    try {
+      setLoadingVehicleTypes(true);
+      setError("");
 
-    Bike: {
-      driver: "Amal Jay",
-      vehicle: "WP BCD-7890",
-      status: "Available",
-    },
+      // Public ACTIVE vehicle types endpoint
+      const response = await fetch(
+        `${API_BASE_URL}/vehicletypes`
+      );
+
+      const data = await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message || "Unable to load vehicle types."
+        );
+      }
+
+      const activeTypes = Array.isArray(data)
+        ? data.filter((item) => item.status === "ACTIVE")
+        : [];
+
+      setVehicleTypes(activeTypes);
+
+      if (activeTypes.length > 0) {
+        setForm((current) => ({
+          ...current,
+          vehicleTypeId:
+            current.vehicleTypeId ||
+            String(activeTypes[0].vehicleTypeId),
+        }));
+      }
+    } catch (err) {
+      console.error("On-site vehicle type error:", err);
+
+      setVehicleTypes([]);
+
+      setError(
+        err?.message || "Unable to load vehicle types."
+      );
+    } finally {
+      setLoadingVehicleTypes(false);
+    }
   };
 
-  const selectedVehicle =
-    availableVehicles[formData.vehicleType];
+  useEffect(() => {
+    loadVehicleTypes();
+  }, []);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
+  /* =========================================================
+     FORM CHANGE
+  ========================================================= */
 
-    setFormData({
-      ...formData,
+  const change = (event) => {
+    const { name, value } = event.target;
+
+    setForm((current) => ({
+      ...current,
       [name]: value,
-    });
+    }));
+
+    if (error) {
+      setError("");
+    }
   };
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
+  /* =========================================================
+     CREATE ON-SITE BOOKING
+  ========================================================= */
 
-    const booking = {
-      bookingId: `BK${Math.floor(
-        1000 + Math.random() * 9000
-      )}`,
+  const submit = async (event) => {
+    event.preventDefault();
 
-      passengerName: formData.passengerName,
-      phone: formData.phone,
-      pickup: formData.pickup,
-      destination: formData.destination,
-      vehicleType: formData.vehicleType,
-      passengers: formData.passengers,
+    if (loading) return;
 
-      driver: selectedVehicle.driver,
-      vehicle: selectedVehicle.vehicle,
+    const token = getToken();
 
-      source: "On-Site",
-      status: "Waiting for Driver Acceptance",
-    };
+    if (!token) {
+      setError("Please login to your Taxi Operator account.");
+      return;
+    }
 
-    setConfirmation(booking);
+    if (!form.passengerName.trim()) {
+      setError("Passenger name is required.");
+      return;
+    }
+
+    if (!form.passengerPhone.trim()) {
+      setError("Passenger phone number is required.");
+      return;
+    }
+
+    if (!form.pickupLocation.trim()) {
+      setError("Pickup location is required.");
+      return;
+    }
+
+    if (!form.destination.trim()) {
+      setError("Destination is required.");
+      return;
+    }
+
+    if (!form.vehicleTypeId) {
+      setError("Please select a vehicle type.");
+      return;
+    }
+
+    if (!form.bookingDate) {
+      setError("Required date is required.");
+      return;
+    }
+
+    if (!form.bookingTime) {
+      setError("Required time is required.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError("");
+      setConfirmation(null);
+
+      const payload = {
+        passengerName: form.passengerName.trim(),
+        passengerPhone: form.passengerPhone.trim(),
+
+        pickupLocation: form.pickupLocation.trim(),
+        destination: form.destination.trim(),
+
+        bookingDate: form.bookingDate,
+
+        bookingTime: `${form.bookingTime}:00`,
+
+        vehicleTypeId: Number(form.vehicleTypeId),
+
+        bookingSource: "ON_SITE",
+      };
+
+      const response = await fetch(
+        `${API_BASE_URL}/bookings`,
+        {
+          method: "POST",
+          headers: authHeaders(),
+          body: JSON.stringify(payload),
+        }
+      );
+
+      const data = await safeJson(response);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message ||
+            data?.title ||
+            "Unable to create booking."
+        );
+      }
+
+      // Supports either:
+      // { booking: {...} }
+      // OR direct booking object.
+      const createdBooking = data?.booking || data;
+
+      setConfirmation(createdBooking);
+    } catch (err) {
+      console.error("On-site booking error:", err);
+
+      setError(
+        err?.message || "Unable to create booking."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const resetForm = () => {
-    setFormData({
-      passengerName: "",
-      phone: "",
-      pickup: "Makumbura Multimodal Center",
-      destination: "",
-      vehicleType: "Car",
-      passengers: "1",
-      notes: "",
-    });
+  /* =========================================================
+     RESET
+  ========================================================= */
 
+  const reset = () => {
     setConfirmation(null);
+    setError("");
+
+    setForm((current) => ({
+      passengerName: "",
+      passengerPhone: "",
+      pickupLocation: "Makumbura Multimodal Center",
+      destination: "",
+      bookingDate: "",
+      bookingTime: "",
+      vehicleTypeId: current.vehicleTypeId,
+    }));
   };
+
+  /* =========================================================
+     VEHICLE ICON
+  ========================================================= */
+
+  const getVehicleIcon = (typeName) => {
+    const type = (typeName || "").toUpperCase();
+
+    if (type.includes("CAR")) {
+      return "🚗";
+    }
+
+    if (
+      type.includes("THREE") ||
+      type.includes("TUK")
+    ) {
+      return "🛺";
+    }
+
+    if (
+      type.includes("BIKE") ||
+      type.includes("MOTOR")
+    ) {
+      return "🏍️";
+    }
+
+    return "🚕";
+  };
+
+  /* =========================================================
+     UI
+  ========================================================= */
 
   return (
     <>
       <style>{`
-        .onsite-page {
-          min-height: 100vh;
+        .bk-page {
           padding: 30px;
+          min-height: 100vh;
           background: #f4f7fa;
           font-family: Arial, Helvetica, sans-serif;
-        }
-
-        .onsite-header {
-          margin-bottom: 24px;
-        }
-
-        .onsite-header h1 {
-          margin: 0 0 6px;
           color: #0b2946;
+        }
+
+        .bk-head {
+          margin-bottom: 20px;
+        }
+
+        .bk-head h1 {
+          margin: 0 0 6px;
           font-size: 28px;
           font-weight: 800;
         }
 
-        .onsite-header p {
+        .bk-head p {
           margin: 0;
           color: #7b8794;
-          font-size: 13px;
+          font-size: 12px;
         }
 
-        .onsite-info {
-          display: flex;
-          gap: 13px;
-          align-items: center;
-
-          background: #fff7dc;
-
-          border: 1px solid #eedc9d;
-          border-radius: 8px;
-
-          padding: 15px 17px;
-
-          margin-bottom: 22px;
-        }
-
-        .onsite-info-icon {
-          font-size: 25px;
-        }
-
-        .onsite-info h3 {
-          margin: 0 0 4px;
-          color: #0b2946;
-          font-size: 13px;
-        }
-
-        .onsite-info p {
-          margin: 0;
-          color: #766b4d;
-          font-size: 11px;
-          line-height: 1.5;
-        }
-
-        .onsite-container {
+        .bk-grid {
           display: grid;
           grid-template-columns: 1.5fr 1fr;
-          gap: 22px;
+          gap: 18px;
         }
 
-        .onsite-card {
+        .bk-card {
           background: white;
-
           border: 1px solid #e2e7ec;
           border-radius: 10px;
-
-          padding: 24px;
-
-          box-shadow: 0 4px 14px rgba(11,41,70,0.05);
+          padding: 22px;
         }
 
-        .onsite-card h2 {
-          margin: 0 0 20px;
-
-          color: #0b2946;
-
-          font-size: 18px;
-          font-weight: 800;
+        .bk-card h2 {
+          margin: 0 0 18px;
+          font-size: 17px;
         }
 
-        .onsite-grid {
+        .bk-form {
           display: grid;
-
           grid-template-columns: repeat(2, 1fr);
-
-          gap: 17px;
+          gap: 14px;
         }
 
-        .onsite-field {
-          display: flex;
-          flex-direction: column;
-        }
-
-        .onsite-field.full {
+        .bk-field.full {
           grid-column: 1 / -1;
         }
 
-        .onsite-field label {
-          margin-bottom: 7px;
-
-          color: #0b2946;
-
-          font-size: 11px;
-          font-weight: 700;
+        .bk-field label {
+          display: block;
+          margin-bottom: 6px;
+          font-size: 10px;
+          font-weight: 800;
         }
 
-        .onsite-field input,
-        .onsite-field select,
-        .onsite-field textarea {
+        .bk-field input,
+        .bk-field select {
           width: 100%;
-
-          padding: 11px 12px;
-
+          padding: 10px 11px;
           border: 1px solid #d8e0e6;
           border-radius: 6px;
-
           outline: none;
-
           background: white;
-
-          color: #405160;
-
-          font-size: 12px;
+          color: #25394b;
+          box-sizing: border-box;
         }
 
-        .onsite-field textarea {
-          min-height: 85px;
-          resize: vertical;
-        }
-
-        .onsite-field input:focus,
-        .onsite-field select:focus,
-        .onsite-field textarea:focus {
+        .bk-field input:focus,
+        .bk-field select:focus {
           border-color: #f6c20d;
-
-          box-shadow:
-            0 0 0 3px rgba(246,194,13,0.1);
+          box-shadow: 0 0 0 3px rgba(246,194,13,.12);
         }
 
-        .onsite-submit {
+        .bk-submit {
           width: 100%;
-
-          margin-top: 20px;
-
-          padding: 12px;
-
+          margin-top: 17px;
           border: none;
-          border-radius: 6px;
-
           background: #f6c20d;
-
           color: #0b2946;
-
-          font-size: 12px;
+          padding: 12px;
+          border-radius: 6px;
           font-weight: 800;
-
           cursor: pointer;
         }
 
-        .onsite-submit:hover {
-          background: #e3b300;
+        .bk-submit:hover:not(:disabled) {
+          background: #e6b500;
         }
 
-        .onsite-status-box {
-          padding: 15px;
-
-          background: #f7fafc;
-
-          border: 1px solid #e4e9ed;
-          border-radius: 8px;
-
-          margin-bottom: 15px;
+        .bk-submit:disabled {
+          opacity: .6;
+          cursor: not-allowed;
         }
 
-        .onsite-status-label {
+        .bk-info {
+          padding: 12px;
+          background: #f7f9fb;
+          border-radius: 7px;
+          margin-bottom: 10px;
+        }
+
+        .bk-info span {
           display: block;
-
-          color: #89939d;
-
-          font-size: 9px;
-
+          font-size: 8px;
+          color: #8a96a0;
           margin-bottom: 4px;
         }
 
-        .onsite-status-value {
-          color: #0b2946;
+        .bk-info strong {
+          font-size: 10px;
+        }
 
+        .bk-error {
+          padding: 11px 13px;
+          border-radius: 7px;
+          margin-bottom: 14px;
+          font-size: 10px;
+          background: #fff1f1;
+          border: 1px solid #efc1c1;
+          color: #a63737;
+        }
+
+        .bk-vehicle-list {
+          margin-top: 18px;
+        }
+
+        .bk-vehicle-list h3 {
+          margin: 0 0 10px;
           font-size: 12px;
-          font-weight: 700;
         }
 
-        .onsite-vehicle {
-          margin-top: 20px;
-
-          padding: 18px;
-
-          background: #eef9f1;
-
-          border: 1px solid #cfe9d5;
-          border-radius: 8px;
-        }
-
-        .onsite-vehicle-title {
+        .bk-vehicle-item {
           display: flex;
           align-items: center;
           justify-content: space-between;
-
-          margin-bottom: 15px;
+          gap: 10px;
+          padding: 10px 11px;
+          margin-bottom: 7px;
+          background: white;
+          border: 1px solid #e6eaee;
+          border-radius: 6px;
         }
 
-        .onsite-vehicle-title h3 {
-          margin: 0;
-
-          color: #0b2946;
-
-          font-size: 13px;
-        }
-
-        .onsite-available {
-          background: #dff3e4;
-          color: #18763a;
-
-          padding: 5px 9px;
-
-          border-radius: 20px;
-
-          font-size: 9px;
+        .bk-vehicle-item span {
+          font-size: 10px;
           font-weight: 700;
         }
 
-        .onsite-vehicle-row {
-          display: flex;
-          justify-content: space-between;
-
-          gap: 15px;
-
-          padding: 8px 0;
-
-          border-bottom: 1px solid #daeade;
+        .bk-vehicle-item small {
+          color: #87939e;
+          font-size: 8px;
         }
 
-        .onsite-vehicle-row:last-child {
-          border-bottom: none;
-        }
-
-        .onsite-vehicle-row span {
-          color: #748077;
-          font-size: 10px;
-        }
-
-        .onsite-vehicle-row strong {
-          color: #0b2946;
-          font-size: 11px;
-        }
-
-        .onsite-warning {
-          margin-top: 18px;
-
-          padding: 13px;
-
-          background: #eef6ff;
-
-          border: 1px solid #d8e9f8;
-          border-radius: 7px;
-
-          color: #5a7186;
-
-          font-size: 10px;
-          line-height: 1.6;
-        }
-
-        .onsite-modal-bg {
+        .bk-overlay {
           position: fixed;
           inset: 0;
-
+          background: rgba(4, 19, 33, .68);
           z-index: 5000;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           padding: 20px;
-
-          background: rgba(4,19,33,0.68);
         }
 
-        .onsite-modal {
+        .bk-modal {
           width: 100%;
-          max-width: 530px;
-
+          max-width: 520px;
           background: white;
-
           border-radius: 12px;
-
-          padding: 27px;
-
-          box-shadow:
-            0 16px 50px rgba(0,0,0,0.25);
+          padding: 24px;
+          box-shadow: 0 20px 50px rgba(0,0,0,.25);
         }
 
-        .onsite-success {
-          width: 58px;
-          height: 58px;
-
-          margin: 0 auto 15px;
-
-          display: flex;
-          align-items: center;
-          justify-content: center;
-
-          border-radius: 50%;
-
-          background: #e1f5e7;
-
-          color: #19813c;
-
-          font-size: 25px;
-          font-weight: 800;
-        }
-
-        .onsite-modal h2 {
-          margin: 0 0 7px;
-
+        .bk-modal h2 {
           text-align: center;
-
+          margin: 0 0 15px;
           color: #0b2946;
-
-          font-size: 21px;
         }
 
-        .onsite-modal-subtitle {
-          margin: 0 0 20px;
-
-          text-align: center;
-
-          color: #7b8792;
-
-          font-size: 11px;
-        }
-
-        .onsite-confirm-details {
-          background: #f8fafc;
-
-          border: 1px solid #e5e9ed;
-          border-radius: 8px;
-
-          padding: 15px;
-        }
-
-        .onsite-confirm-row {
+        .bk-row {
           display: flex;
-
           justify-content: space-between;
-
           gap: 15px;
-
           padding: 8px 0;
-
-          border-bottom: 1px solid #edf0f2;
-        }
-
-        .onsite-confirm-row:last-child {
-          border-bottom: none;
-        }
-
-        .onsite-confirm-row span {
-          color: #89939d;
-
+          border-bottom: 1px solid #edf0f3;
           font-size: 10px;
         }
 
-        .onsite-confirm-row strong {
+        .bk-row span {
+          color: #7c8995;
+        }
+
+        .bk-row strong {
           color: #0b2946;
-
-          font-size: 11px;
-
           text-align: right;
         }
 
-        .onsite-message {
+        .bk-close {
+          width: 100%;
           margin-top: 15px;
-
-          padding: 14px;
-
-          background: #fff7d9;
-
-          border: 1px solid #edd990;
-          border-radius: 7px;
-
-          color: #746743;
-
-          font-size: 10px;
-          line-height: 1.6;
-        }
-
-        .onsite-actions {
-          display: grid;
-
-          grid-template-columns: 1fr 1fr;
-
-          gap: 10px;
-
-          margin-top: 18px;
-        }
-
-        .onsite-actions button {
+          border: none;
+          background: #0b2946;
+          color: white;
           padding: 10px;
-
           border-radius: 6px;
-
           cursor: pointer;
-
-          font-size: 11px;
           font-weight: 700;
         }
 
-        .onsite-close {
-          background: white;
-
-          color: #0b2946;
-
-          border: 1px solid #0b2946;
-        }
-
-        .onsite-new {
-          border: none;
-
-          background: #f6c20d;
-
-          color: #0b2946;
-        }
-
-        @media (max-width: 950px) {
-          .onsite-container {
+        @media(max-width: 900px) {
+          .bk-grid {
             grid-template-columns: 1fr;
           }
         }
 
-        @media (max-width: 650px) {
-          .onsite-page {
+        @media(max-width: 600px) {
+          .bk-page {
             padding: 18px;
           }
 
-          .onsite-grid {
+          .bk-form {
             grid-template-columns: 1fr;
           }
 
-          .onsite-field.full {
+          .bk-field.full {
             grid-column: auto;
-          }
-
-          .onsite-actions {
-            grid-template-columns: 1fr;
           }
         }
       `}</style>
 
-      <main className="onsite-page">
+      <main className="bk-page">
 
-        <div className="onsite-header">
+        {/* HEADER */}
+
+        <div className="bk-head">
           <h1>On-Site Booking</h1>
 
           <p>
-            Create bookings for passengers visiting the Makumbura
-            Taxi Operations counter.
+            Create a booking for a passenger visiting the
+            Makumbura Taxi Operations counter.
           </p>
         </div>
 
-        <div className="onsite-info">
+        {/* ERROR */}
 
-          <div className="onsite-info-icon">
-            📍
+        {error && (
+          <div className="bk-error">
+            {error}
           </div>
+        )}
 
-          <div>
-            <h3>Makumbura Counter Booking</h3>
+        <div className="bk-grid">
 
-            <p>
-              Enter the passenger's journey information and select
-              a suitable available vehicle.
-            </p>
-          </div>
+          {/* BOOKING FORM */}
 
-        </div>
-
-        <div className="onsite-container">
-
-          <section className="onsite-card">
-
+          <section className="bk-card">
             <h2>Passenger & Journey Details</h2>
 
-            <form onSubmit={handleSubmit}>
+            <form onSubmit={submit}>
+              <div className="bk-form">
 
-              <div className="onsite-grid">
-
-                <div className="onsite-field">
+                <div className="bk-field">
                   <label>Passenger Name</label>
 
                   <input
-                    type="text"
                     name="passengerName"
+                    value={form.passengerName}
+                    onChange={change}
                     placeholder="Enter passenger name"
-                    value={formData.passengerName}
-                    onChange={handleChange}
                     required
                   />
                 </div>
 
-                <div className="onsite-field">
+                <div className="bk-field">
                   <label>Phone Number</label>
 
                   <input
+                    name="passengerPhone"
                     type="tel"
-                    name="phone"
                     placeholder="07XXXXXXXX"
-                    value={formData.phone}
-                    onChange={handleChange}
+                    value={form.passengerPhone}
+                    onChange={change}
                     required
                   />
                 </div>
 
-                <div className="onsite-field full">
+                <div className="bk-field full">
                   <label>Pickup Location</label>
 
                   <input
-                    type="text"
-                    name="pickup"
-                    value={formData.pickup}
-                    onChange={handleChange}
+                    name="pickupLocation"
+                    value={form.pickupLocation}
+                    onChange={change}
                     required
                   />
                 </div>
 
-                <div className="onsite-field full">
+                <div className="bk-field full">
                   <label>Destination</label>
 
                   <input
-                    type="text"
                     name="destination"
+                    value={form.destination}
+                    onChange={change}
                     placeholder="Enter destination"
-                    value={formData.destination}
-                    onChange={handleChange}
                     required
                   />
                 </div>
 
-                <div className="onsite-field">
+                <div className="bk-field">
                   <label>Vehicle Type</label>
 
                   <select
-                    name="vehicleType"
-                    value={formData.vehicleType}
-                    onChange={handleChange}
+                    name="vehicleTypeId"
+                    value={form.vehicleTypeId}
+                    onChange={change}
+                    disabled={loadingVehicleTypes}
+                    required
                   >
-                    <option value="Car">
-                      Car
+                    <option value="">
+                      {loadingVehicleTypes
+                        ? "Loading..."
+                        : "Select Vehicle Type"}
                     </option>
 
-                    <option value="Three-Wheeler">
-                      Three-Wheeler
-                    </option>
-
-                    <option value="Bike">
-                      Bike
-                    </option>
+                    {vehicleTypes.map((vehicle) => (
+                      <option
+                        key={vehicle.vehicleTypeId}
+                        value={vehicle.vehicleTypeId}
+                      >
+                        {vehicle.typeName}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <div className="onsite-field">
-                  <label>Number of Passengers</label>
+                <div className="bk-field">
+                  <label>Required Date</label>
 
-                  <select
-                    name="passengers"
-                    value={formData.passengers}
-                    onChange={handleChange}
-                  >
-                    <option value="1">1 Passenger</option>
-                    <option value="2">2 Passengers</option>
-                    <option value="3">3 Passengers</option>
-                    <option value="4">4 Passengers</option>
-                  </select>
+                  <input
+                    name="bookingDate"
+                    type="date"
+                    value={form.bookingDate}
+                    onChange={change}
+                    required
+                  />
                 </div>
 
-                <div className="onsite-field full">
-                  <label>Additional Notes</label>
+                <div className="bk-field">
+                  <label>Required Time</label>
 
-                  <textarea
-                    name="notes"
-                    placeholder="Optional journey notes..."
-                    value={formData.notes}
-                    onChange={handleChange}
+                  <input
+                    name="bookingTime"
+                    type="time"
+                    value={form.bookingTime}
+                    onChange={change}
+                    required
                   />
                 </div>
 
@@ -687,217 +653,163 @@ function OnSiteBooking() {
 
               <button
                 type="submit"
-                className="onsite-submit"
+                className="bk-submit"
+                disabled={
+                  loading ||
+                  loadingVehicleTypes ||
+                  !form.vehicleTypeId
+                }
               >
-                Create On-Site Booking
+                {loading
+                  ? "Creating Booking..."
+                  : "Create Booking"}
               </button>
-
             </form>
-
           </section>
 
-          <aside className="onsite-card">
+          {/* BOOKING INFORMATION */}
 
+          <aside className="bk-card">
             <h2>Booking Information</h2>
 
-            <div className="onsite-status-box">
-              <span className="onsite-status-label">
-                BOOKING SOURCE
-              </span>
-
-              <span className="onsite-status-value">
-                On-Site / Counter
-              </span>
+            <div className="bk-info">
+              <span>SOURCE</span>
+              <strong>{formatText("ON_SITE")}</strong>
             </div>
 
-            <div className="onsite-status-box">
-              <span className="onsite-status-label">
-                PICKUP POINT
-              </span>
-
-              <span className="onsite-status-value">
-                Makumbura Multimodal Center
-              </span>
+            <div className="bk-info">
+              <span>MANAGED BY</span>
+              <strong>Taxi Operator</strong>
             </div>
 
-            <div className="onsite-status-box">
-              <span className="onsite-status-label">
-                SELECTED VEHICLE TYPE
-              </span>
-
-              <span className="onsite-status-value">
-                {formData.vehicleType}
-              </span>
+            <div className="bk-info">
+              <span>INITIAL STATUS</span>
+              <strong>Pending Driver Assignment</strong>
             </div>
 
-            <div className="onsite-vehicle">
+            <div className="bk-info">
+              <span>NEXT STEP</span>
 
-              <div className="onsite-vehicle-title">
-
-                <h3>Available Vehicle</h3>
-
-                <span className="onsite-available">
-                  ● Available
-                </span>
-
-              </div>
-
-              <div className="onsite-vehicle-row">
-                <span>Driver</span>
-
-                <strong>
-                  {selectedVehicle.driver}
-                </strong>
-              </div>
-
-              <div className="onsite-vehicle-row">
-                <span>Vehicle No.</span>
-
-                <strong>
-                  {selectedVehicle.vehicle}
-                </strong>
-              </div>
-
-              <div className="onsite-vehicle-row">
-                <span>Status</span>
-
-                <strong>
-                  {selectedVehicle.status}
-                </strong>
-              </div>
-
+              <strong>
+                Assign a matching available vehicle and driver
+                from Booking Management.
+              </strong>
             </div>
 
-            <div className="onsite-warning">
-              The selected driver must accept the booking before
-              the trip can begin. Backend integration will later
-              provide real driver availability and live booking
-              updates.
-            </div>
+            <div className="bk-vehicle-list">
+              <h3>Available Vehicle Types</h3>
 
+              {loadingVehicleTypes ? (
+                <div className="bk-info">
+                  Loading vehicle types...
+                </div>
+              ) : vehicleTypes.length === 0 ? (
+                <div className="bk-info">
+                  No active vehicle types available.
+                </div>
+              ) : (
+                vehicleTypes.map((vehicle) => (
+                  <div
+                    className="bk-vehicle-item"
+                    key={vehicle.vehicleTypeId}
+                  >
+                    <span>
+                      {getVehicleIcon(vehicle.typeName)}{" "}
+                      {vehicle.typeName}
+                    </span>
+
+                    <small>
+                      Capacity: {vehicle.passengerCapacity}
+                    </small>
+                  </div>
+                ))
+              )}
+            </div>
           </aside>
 
         </div>
 
+        {/* BOOKING CONFIRMATION */}
+
         {confirmation && (
+          <div className="bk-overlay">
 
-          <div className="onsite-modal-bg">
+            <div className="bk-modal">
+              <h2>✓ Booking Created</h2>
 
-            <div className="onsite-modal">
+              <div className="bk-row">
+                <span>Booking ID</span>
 
-              <div className="onsite-success">
-                ✓
+                <strong>
+                  BK
+                  {String(
+                    confirmation.bookingId || ""
+                  ).padStart(4, "0")}
+                </strong>
               </div>
 
-              <h2>On-Site Booking Created</h2>
-
-              <p className="onsite-modal-subtitle">
-                Booking created successfully and sent for driver
-                acceptance.
-              </p>
-
-              <div className="onsite-confirm-details">
-
-                <div className="onsite-confirm-row">
-                  <span>Booking ID</span>
-
-                  <strong>
-                    {confirmation.bookingId}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Passenger</span>
-
-                  <strong>
-                    {confirmation.passengerName}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Phone</span>
-
-                  <strong>
-                    {confirmation.phone}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Vehicle Type</span>
-
-                  <strong>
-                    {confirmation.vehicleType}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Driver</span>
-
-                  <strong>
-                    {confirmation.driver}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Vehicle</span>
-
-                  <strong>
-                    {confirmation.vehicle}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Destination</span>
-
-                  <strong>
-                    {confirmation.destination}
-                  </strong>
-                </div>
-
-                <div className="onsite-confirm-row">
-                  <span>Status</span>
-
-                  <strong>
-                    {confirmation.status}
-                  </strong>
-                </div>
-
+              <div className="bk-row">
+                <span>Source</span>
+                <strong>On Site</strong>
               </div>
 
-              <div className="onsite-message">
-                Confirmation example: Booking{" "}
-                <strong>{confirmation.bookingId}</strong> created.
-                Driver: {confirmation.driver}, Vehicle:{" "}
-                {confirmation.vehicle}, Pickup:{" "}
-                {confirmation.pickup}, Destination:{" "}
-                {confirmation.destination}. SMS functionality will
-                be connected with the backend later.
+              <div className="bk-row">
+                <span>Passenger</span>
+
+                <strong>
+                  {confirmation.passengerName ||
+                    form.passengerName}
+                </strong>
               </div>
 
-              <div className="onsite-actions">
+              <div className="bk-row">
+                <span>Phone</span>
 
-                <button
-                  className="onsite-close"
-                  onClick={() =>
-                    setConfirmation(null)
-                  }
-                >
-                  Close
-                </button>
-
-                <button
-                  className="onsite-new"
-                  onClick={resetForm}
-                >
-                  New Booking
-                </button>
-
+                <strong>
+                  {confirmation.passengerPhone ||
+                    form.passengerPhone}
+                </strong>
               </div>
 
+              <div className="bk-row">
+                <span>Pickup</span>
+
+                <strong>
+                  {confirmation.pickupLocation ||
+                    form.pickupLocation}
+                </strong>
+              </div>
+
+              <div className="bk-row">
+                <span>Destination</span>
+
+                <strong>
+                  {confirmation.destination ||
+                    form.destination}
+                </strong>
+              </div>
+
+              <div className="bk-row">
+                <span>Status</span>
+
+                <strong>
+                  {formatText(
+                    confirmation.bookingStatus ||
+                      "WAITING_FOR_DRIVER"
+                  )}
+                </strong>
+              </div>
+
+              <button
+                type="button"
+                className="bk-close"
+                onClick={reset}
+              >
+                Create Another Booking
+              </button>
             </div>
 
           </div>
-
         )}
 
       </main>

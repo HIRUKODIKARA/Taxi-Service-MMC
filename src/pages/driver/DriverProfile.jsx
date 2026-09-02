@@ -1,388 +1,636 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useState,
+} from "react";
+
+const API_BASE_URL =
+  "http://localhost:5171/api";
 
 function DriverProfile() {
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] =
+    useState(false);
 
-  const [profile, setProfile] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    nic: "",
-    license: "",
-    vehicleType: "Not Assigned",
-    vehicleNo: "Not Assigned",
-  });
+  const [profile, setProfile] =
+    useState({
+      userId: null,
 
-  const [originalProfile, setOriginalProfile] =
+      name: "",
+      phone: "",
+      email: "",
+      nic: "",
+
+      license: "",
+
+      vehicleType:
+        "Not Assigned",
+
+      vehicleNo:
+        "Not Assigned",
+    });
+
+  const [
+    originalProfile,
+    setOriginalProfile,
+  ] = useState(null);
+
+  const [driver, setDriver] =
     useState(null);
 
-  const [driver, setDriver] = useState(null);
-  const [vehicle, setVehicle] = useState(null);
+  const [vehicle, setVehicle] =
+    useState(null);
 
-  const [verificationStatus, setVerificationStatus] =
-    useState("PENDING");
+  const [
+    verificationStatus,
+    setVerificationStatus,
+  ] = useState("PENDING");
 
-  const [operationalStatus, setOperationalStatus] =
-    useState("OFFLINE");
+  const [
+    operationalStatus,
+    setOperationalStatus,
+  ] = useState("OFFLINE");
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] =
+    useState(true);
 
-  const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
+  const [saving, setSaving] =
+    useState(false);
 
-  const getStoredUser = () => {
-    try {
-      const localUser = localStorage.getItem("user");
-      const sessionUser = sessionStorage.getItem("user");
+  const [error, setError] =
+    useState("");
 
-      if (localUser) {
-        return JSON.parse(localUser);
-      }
+  const [message, setMessage] =
+    useState("");
 
-      if (sessionUser) {
-        return JSON.parse(sessionUser);
-      }
+  /* =========================================================
+     TOKEN
+  ========================================================= */
 
-      return null;
-    } catch {
-      return null;
-    }
-  };
+  const getToken = () =>
+    localStorage.getItem("token") ||
+    localStorage.getItem(
+      "authToken"
+    ) ||
+    localStorage.getItem(
+      "accessToken"
+    ) ||
+    sessionStorage.getItem(
+      "token"
+    ) ||
+    sessionStorage.getItem(
+      "authToken"
+    ) ||
+    sessionStorage.getItem(
+      "accessToken"
+    ) ||
+    "";
 
-  const getToken = () => {
-    return (
-      localStorage.getItem("token") ||
-      sessionStorage.getItem("token") ||
-      ""
+  const getHeaders = () => ({
+    "Content-Type":
+      "application/json",
+
+    Authorization:
+      `Bearer ${getToken()}`,
+  });
+
+  /* =========================================================
+     UPDATE STORED LOGIN USER
+  ========================================================= */
+
+  const updateStoredUser = (
+    updatedProfile
+  ) => {
+    const updateStorage =
+      (storage) => {
+        try {
+          const raw =
+            storage.getItem(
+              "user"
+            );
+
+          if (!raw) {
+            return;
+          }
+
+          const currentUser =
+            JSON.parse(raw);
+
+          const updatedUser = {
+            ...currentUser,
+
+            fullName:
+              updatedProfile.name,
+
+            phone:
+              updatedProfile.phone,
+
+            email:
+              updatedProfile.email,
+          };
+
+          storage.setItem(
+            "user",
+            JSON.stringify(
+              updatedUser
+            )
+          );
+        } catch (err) {
+          console.error(
+            "Stored user update error:",
+            err
+          );
+        }
+      };
+
+    updateStorage(localStorage);
+    updateStorage(
+      sessionStorage
     );
   };
 
-  const getHeaders = () => {
-    const token = getToken();
+  /* =========================================================
+     LOAD PROFILE
+  ========================================================= */
 
-    return {
-      "Content-Type": "application/json",
+  const loadProfile =
+    async () => {
+      const token = getToken();
 
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`,
+      if (!token) {
+        setError(
+          "Please login to your driver account."
+        );
+
+        setLoading(false);
+
+        return;
+      }
+
+      try {
+        setLoading(true);
+
+        setError("");
+        setMessage("");
+
+        const [
+          userResponse,
+          driverResponse,
+          vehicleResponse,
+          vehicleTypesResponse,
+        ] = await Promise.all([
+          fetch(
+            `${API_BASE_URL}/users/me`,
+            {
+              headers:
+                getHeaders(),
+            }
+          ),
+
+          fetch(
+            `${API_BASE_URL}/drivers/me`,
+            {
+              headers:
+                getHeaders(),
+            }
+          ),
+
+          fetch(
+            `${API_BASE_URL}/vehicles/my`,
+            {
+              headers:
+                getHeaders(),
+            }
+          ),
+
+          fetch(
+            `${API_BASE_URL}/vehicletypes`,
+            {
+              headers:
+                getHeaders(),
+            }
+          ),
+        ]);
+
+        if (!userResponse.ok) {
+          throw new Error(
+            "Unable to load user information."
+          );
+        }
+
+        if (!driverResponse.ok) {
+          throw new Error(
+            "Driver profile was not found."
+          );
+        }
+
+        const currentUser =
+          await userResponse.json();
+
+        const driverData =
+          await driverResponse.json();
+
+        let vehicleData = null;
+
+        if (vehicleResponse.ok) {
+          vehicleData =
+            await vehicleResponse.json();
+        }
+
+        const vehicleTypes =
+          vehicleTypesResponse.ok
+            ? await vehicleTypesResponse.json()
+            : [];
+
+        const assignedVehicle =
+          Array.isArray(
+            vehicleData
+          )
+            ? vehicleData[0] ||
+              null
+            : vehicleData;
+
+        let vehicleTypeName =
+          "Not Assigned";
+
+        if (assignedVehicle) {
+          const type =
+            vehicleTypes.find(
+              (item) =>
+                Number(
+                  item.vehicleTypeId
+                ) ===
+                Number(
+                  assignedVehicle.vehicleTypeId
+                )
+            );
+
+          if (type) {
+            vehicleTypeName =
+              type.typeName;
           }
-        : {}),
-    };
-  };
+        }
 
-  const storedUser = getStoredUser();
+        const loadedProfile = {
+          userId:
+            currentUser.userId,
+
+          name:
+            currentUser.fullName ||
+            "",
+
+          phone:
+            currentUser.phone ||
+            "",
+
+          email:
+            currentUser.email ||
+            "",
+
+          nic:
+            currentUser.nic ||
+            "",
+
+          license:
+            driverData.drivingLicenseNo ||
+            "",
+
+          vehicleType:
+            vehicleTypeName,
+
+          vehicleNo:
+            assignedVehicle
+              ?.registrationNumber ||
+            "Not Assigned",
+        };
+
+        setProfile(
+          loadedProfile
+        );
+
+        setOriginalProfile(
+          loadedProfile
+        );
+
+        setDriver(
+          driverData
+        );
+
+        setVehicle(
+          assignedVehicle
+        );
+
+        setVerificationStatus(
+          driverData
+            .verificationStatus ||
+            "PENDING"
+        );
+
+        setOperationalStatus(
+          driverData
+            .operationalStatus ||
+            "OFFLINE"
+        );
+      } catch (err) {
+        console.error(
+          "Driver profile error:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to load driver profile."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
 
   useEffect(() => {
     loadProfile();
   }, []);
 
-  const loadProfile = async () => {
-    if (!storedUser) {
-      setError("Please login to your driver account.");
-      setLoading(false);
-      return;
-    }
+  /* =========================================================
+     CHANGE
+  ========================================================= */
 
-    try {
-      setLoading(true);
-      setError("");
+  const handleChange = (
+    event
+  ) => {
+    const {
+      name,
+      value,
+    } = event.target;
 
-      const [
-        usersResponse,
-        driverResponse,
-        vehiclesResponse,
-        vehicleTypesResponse,
-      ] = await Promise.all([
-        fetch("http://localhost:5171/api/users", {
-          headers: getHeaders(),
-        }),
+    setProfile(
+      (current) => ({
+        ...current,
 
-        fetch(
-          `http://localhost:5171/api/drivers/user/${storedUser.userId}`,
-          {
-            headers: getHeaders(),
-          }
-        ),
+        [name]: value,
+      })
+    );
 
-        fetch("http://localhost:5171/api/vehicles", {
-          headers: getHeaders(),
-        }),
-
-        fetch("http://localhost:5171/api/vehicletypes", {
-          headers: getHeaders(),
-        }),
-      ]);
-
-      if (!usersResponse.ok) {
-        throw new Error(
-          "Unable to load user information."
-        );
-      }
-
-      if (!driverResponse.ok) {
-        throw new Error(
-          "Driver profile was not found for this account."
-        );
-      }
-
-      const users = await usersResponse.json();
-      const driverData = await driverResponse.json();
-
-      const vehicles = vehiclesResponse.ok
-        ? await vehiclesResponse.json()
-        : [];
-
-      const vehicleTypes = vehicleTypesResponse.ok
-        ? await vehicleTypesResponse.json()
-        : [];
-
-      const currentUser = users.find(
-        (item) =>
-          Number(item.userId) ===
-          Number(storedUser.userId)
-      );
-
-      if (!currentUser) {
-        throw new Error(
-          "User information was not found."
-        );
-      }
-
-      const assignedVehicle = vehicles.find(
-        (item) =>
-          Number(item.driverId) ===
-          Number(driverData.driverId)
-      );
-
-      let vehicleTypeName = "Not Assigned";
-
-      if (assignedVehicle) {
-        const vehicleType = vehicleTypes.find(
-          (item) =>
-            Number(item.vehicleTypeId) ===
-            Number(assignedVehicle.vehicleTypeId)
-        );
-
-        if (vehicleType) {
-          vehicleTypeName = vehicleType.typeName;
-        }
-      }
-
-      const loadedProfile = {
-        name: currentUser.fullName || "",
-        phone: currentUser.phone || "",
-        email: currentUser.email || "",
-        nic: currentUser.nic || "",
-        license:
-          driverData.drivingLicenseNo || "",
-        vehicleType: vehicleTypeName,
-        vehicleNo:
-          assignedVehicle?.registrationNumber ||
-          "Not Assigned",
-      };
-
-      setProfile(loadedProfile);
-      setOriginalProfile(loadedProfile);
-
-      setDriver(driverData);
-      setVehicle(assignedVehicle || null);
-
-      setVerificationStatus(
-        driverData.verificationStatus || "PENDING"
-      );
-
-      setOperationalStatus(
-        driverData.operationalStatus || "OFFLINE"
-      );
-    } catch (err) {
-      console.error("Driver profile error:", err);
-
-      setError(
-        err.message ||
-          "Unable to load driver profile."
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-
-    setProfile((current) => ({
-      ...current,
-      [name]: value,
-    }));
-  };
-
-  const cancelEdit = () => {
-    if (originalProfile) {
-      setProfile(originalProfile);
-    }
-
-    setEditing(false);
     setError("");
     setMessage("");
   };
 
-  const saveProfile = async () => {
-    if (!storedUser) {
-      return;
-    }
+  /* =========================================================
+     EDIT
+  ========================================================= */
 
-    if (!profile.name.trim()) {
-      setError("Full name is required.");
-      return;
-    }
+  const startEdit = () => {
+    setOriginalProfile({
+      ...profile,
+    });
 
-    if (!profile.email.trim()) {
-      setError("Email address is required.");
-      return;
-    }
+    setEditing(true);
 
-    if (!profile.phone.trim()) {
-      setError("Phone number is required.");
-      return;
-    }
-
-    try {
-      setSaving(true);
-      setError("");
-      setMessage("");
-
-      const response = await fetch(
-        `http://localhost:5171/api/users/${storedUser.userId}`,
-        {
-          method: "PUT",
-
-          headers: getHeaders(),
-
-          body: JSON.stringify({
-            fullName: profile.name.trim(),
-            email: profile.email.trim(),
-            phone: profile.phone.trim(),
-          }),
-        }
-      );
-
-      let data = null;
-
-      try {
-        data = await response.json();
-      } catch {
-        data = null;
-      }
-
-      if (!response.ok) {
-        throw new Error(
-          data?.message ||
-            data?.title ||
-            "Unable to save profile changes."
-        );
-      }
-
-      const updatedProfile = {
-        ...profile,
-        name: data.fullName || profile.name,
-        phone: data.phone || profile.phone,
-        email: data.email || profile.email,
-      };
-
-      setProfile(updatedProfile);
-      setOriginalProfile(updatedProfile);
-
-      const updatedStoredUser = {
-        ...storedUser,
-        fullName: updatedProfile.name,
-        phone: updatedProfile.phone,
-        email: updatedProfile.email,
-      };
-
-      if (localStorage.getItem("user")) {
-        localStorage.setItem(
-          "user",
-          JSON.stringify(updatedStoredUser)
-        );
-      }
-
-      if (sessionStorage.getItem("user")) {
-        sessionStorage.setItem(
-          "user",
-          JSON.stringify(updatedStoredUser)
-        );
-      }
-
-      setEditing(false);
-
-      setMessage(
-        "Profile updated successfully."
-      );
-    } catch (err) {
-      console.error("Profile save error:", err);
-
-      setError(
-        err.message ||
-          "Unable to save profile changes."
-      );
-    } finally {
-      setSaving(false);
-    }
+    setError("");
+    setMessage("");
   };
 
+  const cancelEdit = () => {
+    if (originalProfile) {
+      setProfile(
+        originalProfile
+      );
+    }
+
+    setEditing(false);
+
+    setError("");
+    setMessage("");
+  };
+
+  /* =========================================================
+     SAVE
+  ========================================================= */
+
+  const saveProfile =
+    async () => {
+      if (!profile.userId) {
+        setError(
+          "Unable to identify driver user account."
+        );
+
+        return;
+      }
+
+      if (
+        !profile.name.trim()
+      ) {
+        setError(
+          "Full name is required."
+        );
+
+        return;
+      }
+
+      if (
+        !profile.email.trim()
+      ) {
+        setError(
+          "Email address is required."
+        );
+
+        return;
+      }
+
+      if (
+        !profile.phone.trim()
+      ) {
+        setError(
+          "Phone number is required."
+        );
+
+        return;
+      }
+
+      const emailPattern =
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+      if (
+        !emailPattern.test(
+          profile.email.trim()
+        )
+      ) {
+        setError(
+          "Please enter a valid email address."
+        );
+
+        return;
+      }
+
+      try {
+        setSaving(true);
+
+        setError("");
+        setMessage("");
+
+        const response =
+          await fetch(
+            `${API_BASE_URL}/users/${profile.userId}`,
+            {
+              method: "PUT",
+
+              headers:
+                getHeaders(),
+
+              body:
+                JSON.stringify({
+                  fullName:
+                    profile.name.trim(),
+
+                  email:
+                    profile.email.trim(),
+
+                  phone:
+                    profile.phone.trim(),
+
+                  nic:
+                    profile.nic.trim() ||
+                    null,
+                }),
+            }
+          );
+
+        let data = null;
+
+        try {
+          data =
+            await response.json();
+        } catch {
+          data = null;
+        }
+
+        if (!response.ok) {
+          throw new Error(
+            data?.message ||
+              data?.title ||
+              "Unable to save profile changes."
+          );
+        }
+
+        const updatedProfile = {
+          ...profile,
+
+          name:
+            data?.fullName ||
+            profile.name.trim(),
+
+          phone:
+            data?.phone ||
+            profile.phone.trim(),
+
+          email:
+            data?.email ||
+            profile.email.trim(),
+
+          nic:
+            data?.nic ??
+            profile.nic,
+        };
+
+        setProfile(
+          updatedProfile
+        );
+
+        setOriginalProfile(
+          updatedProfile
+        );
+
+        /*
+          Update local/session login user.
+        */
+
+        updateStoredUser(
+          updatedProfile
+        );
+
+        /*
+          VERY IMPORTANT:
+          Tell DriverSidebar to
+          reload /users/me.
+        */
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "driver-profile-updated",
+            {
+              detail: {
+                fullName:
+                  updatedProfile.name,
+
+                phone:
+                  updatedProfile.phone,
+
+                email:
+                  updatedProfile.email,
+              },
+            }
+          )
+        );
+
+        setEditing(false);
+
+        setMessage(
+          "Profile updated successfully."
+        );
+      } catch (err) {
+        console.error(
+          "Profile save error:",
+          err
+        );
+
+        setError(
+          err?.message ||
+            "Unable to save profile changes."
+        );
+      } finally {
+        setSaving(false);
+      }
+    };
+
+  /* =========================================================
+     INITIALS
+  ========================================================= */
+
   const getInitials = () => {
-    if (!profile.name) {
+    const name =
+      profile.name?.trim();
+
+    if (!name) {
       return "DR";
     }
 
-    const parts = profile.name
-      .trim()
-      .split(/\s+/);
+    const parts =
+      name.split(/\s+/);
 
-    if (parts.length === 1) {
+    if (
+      parts.length === 1
+    ) {
       return parts[0]
         .substring(0, 2)
         .toUpperCase();
     }
 
     return `${parts[0][0]}${
-      parts[parts.length - 1][0]
+      parts[
+        parts.length - 1
+      ][0]
     }`.toUpperCase();
   };
 
-  const getVerificationLabel = () => {
-    switch (verificationStatus) {
-      case "APPROVED":
-        return "✓ Verified Driver";
+  /* =========================================================
+     STATUS
+  ========================================================= */
 
-      case "REJECTED":
-        return "✕ Verification Rejected";
-
-      default:
-        return "Verification Pending";
-    }
-  };
-
-  const getVerificationClass = () => {
-    switch (verificationStatus) {
-      case "APPROVED":
-        return "approved";
-
-      case "REJECTED":
-        return "rejected";
-
-      default:
-        return "pending";
-    }
-  };
-
-  const formatStatus = (status) => {
-    if (!status) {
+  const formatStatus = (
+    value
+  ) => {
+    if (!value) {
       return "Unknown";
     }
 
-    return status
+    return value
       .replaceAll("_", " ")
       .toLowerCase()
       .replace(
@@ -392,329 +640,460 @@ function DriverProfile() {
       );
   };
 
+  const verificationClass =
+    verificationStatus ===
+    "APPROVED"
+      ? "approved"
+      : verificationStatus ===
+        "REJECTED"
+      ? "rejected"
+      : "pending";
+
+  const verificationText =
+    verificationStatus ===
+    "APPROVED"
+      ? "✓ Verified Driver"
+      : verificationStatus ===
+        "REJECTED"
+      ? "✕ Verification Rejected"
+      : "Verification Pending";
+
+  /* =========================================================
+     LOADING
+  ========================================================= */
+
   if (loading) {
     return (
       <>
         <style>{`
-          .driver-profile-loading {
+          .dp-loading {
             min-height: 100vh;
+
             display: flex;
             align-items: center;
             justify-content: center;
+
             background: #f4f7fa;
-            font-family: Arial, Helvetica, sans-serif;
-            color: #7b8794;
+
+            color: #7c8893;
+
+            font-family:
+              Arial,
+              Helvetica,
+              sans-serif;
+
             font-size: 12px;
           }
         `}</style>
 
-        <div className="driver-profile-loading">
+        <div className="dp-loading">
           Loading driver profile...
         </div>
       </>
     );
   }
 
+  /* =========================================================
+     UI
+  ========================================================= */
+
   return (
     <>
       <style>{`
-        .driver-profile-page {
+        .dp-page {
           min-height: 100vh;
+
           padding: 30px;
+
           background: #f4f7fa;
-          font-family: Arial, Helvetica, sans-serif;
+
+          font-family:
+            Arial,
+            Helvetica,
+            sans-serif;
+
+          color: #0b2946;
         }
 
-        .driver-profile-header h1 {
+        .dp-header {
+          margin-bottom: 22px;
+        }
+
+        .dp-header h1 {
           margin: 0 0 6px;
-          color: #0b2946;
+
           font-size: 28px;
         }
 
-        .driver-profile-header p {
-          margin: 0 0 23px;
+        .dp-header p {
+          margin: 0;
+
           color: #7b8794;
+
           font-size: 12px;
         }
 
-        .driver-profile-alert {
-          max-width: 850px;
-          margin-bottom: 15px;
+        .dp-alert {
+          max-width: 900px;
+
+          margin-bottom: 14px;
+
           padding: 12px 14px;
+
           border-radius: 7px;
+
           font-size: 10px;
-          line-height: 1.5;
         }
 
-        .driver-profile-alert.error {
+        .dp-alert.error {
           background: #fff1f1;
-          border: 1px solid #efc8c8;
-          color: #a43c3c;
+
+          border:
+            1px solid #efc6c6;
+
+          color: #a53b3b;
         }
 
-        .driver-profile-alert.success {
-          background: #e7f6eb;
-          border: 1px solid #c9e7d1;
-          color: #18763a;
+        .dp-alert.success {
+          background: #eaf8ee;
+
+          border:
+            1px solid #c2e5cc;
+
+          color: #23713a;
         }
 
-        .driver-profile-container {
-          max-width: 850px;
-          background: white;
-          border: 1px solid #e2e7ec;
-          border-radius: 10px;
+        .dp-card {
+          max-width: 900px;
+
           padding: 25px;
+
+          background: white;
+
+          border:
+            1px solid #e2e7ec;
+
+          border-radius: 10px;
         }
 
-        .driver-profile-top {
+        .dp-top {
           display: flex;
-          justify-content: space-between;
           align-items: center;
+          justify-content:
+            space-between;
+
           gap: 20px;
-          margin-bottom: 25px;
+
           padding-bottom: 20px;
-          border-bottom: 1px solid #edf0f3;
+
+          margin-bottom: 20px;
+
+          border-bottom:
+            1px solid #edf0f3;
         }
 
-        .driver-profile-info {
+        .dp-user {
           display: flex;
           align-items: center;
-          gap: 15px;
+
+          gap: 14px;
         }
 
-        .driver-profile-avatar-large {
+        .dp-avatar {
           width: 60px;
           height: 60px;
-          flex-shrink: 0;
+
           display: flex;
           align-items: center;
           justify-content: center;
+
+          flex-shrink: 0;
+
           background: #f6c20d;
+
           color: #0b2946;
+
           border-radius: 50%;
+
           font-size: 18px;
-          font-weight: 800;
+          font-weight: 900;
         }
 
-        .driver-profile-info h2 {
+        .dp-user h2 {
           margin: 0 0 7px;
-          color: #0b2946;
+
           font-size: 18px;
         }
 
-        .driver-profile-badges {
+        .dp-badges {
           display: flex;
           flex-wrap: wrap;
+
           gap: 6px;
         }
 
-        .driver-profile-verified {
+        .dp-badge {
           display: inline-block;
+
           padding: 5px 9px;
+
           border-radius: 20px;
+
           font-size: 8px;
-          font-weight: 700;
+          font-weight: 800;
         }
 
-        .driver-profile-verified.approved {
-          background: #e3f6e7;
+        .dp-badge.approved {
+          background: #e4f6e9;
           color: #18763a;
         }
 
-        .driver-profile-verified.pending {
+        .dp-badge.pending {
           background: #fff3cc;
           color: #806300;
         }
 
-        .driver-profile-verified.rejected {
+        .dp-badge.rejected {
           background: #fde7e7;
           color: #a13a3a;
         }
 
-        .driver-profile-status {
-          display: inline-block;
-          padding: 5px 9px;
-          background: #e6eff8;
+        .dp-status {
+          background: #e7f1fb;
           color: #24649f;
-          border-radius: 20px;
-          font-size: 8px;
-          font-weight: 700;
         }
 
-        .driver-profile-edit {
+        .dp-edit {
           border: none;
+
           background: #0b2946;
+
           color: white;
-          padding: 9px 13px;
+
+          padding: 10px 14px;
+
           border-radius: 6px;
+
           font-size: 9px;
-          font-weight: 700;
-          cursor: pointer;
-        }
-
-        .driver-profile-grid {
-          display: grid;
-          grid-template-columns: repeat(2, 1fr);
-          gap: 17px;
-        }
-
-        .driver-profile-field label {
-          display: block;
-          margin-bottom: 6px;
-          color: #0b2946;
-          font-size: 10px;
-          font-weight: 700;
-        }
-
-        .driver-profile-field input {
-          box-sizing: border-box;
-          width: 100%;
-          padding: 11px 12px;
-          border: 1px solid #d9e0e6;
-          border-radius: 6px;
-          outline: none;
-          color: #53616e;
-          font-size: 11px;
-        }
-
-        .driver-profile-field input:disabled {
-          background: #f7f9fa;
-          color: #687681;
-          cursor: not-allowed;
-        }
-
-        .driver-profile-field input:not(:disabled) {
-          background: white;
-          border-color: #b9c4cc;
-        }
-
-        .driver-profile-field input:not(:disabled):focus {
-          border-color: #f6c20d;
-          box-shadow: 0 0 0 2px rgba(246,194,13,0.12);
-        }
-
-        .driver-profile-actions {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 10px;
-          margin-top: 22px;
-        }
-
-        .driver-profile-cancel {
-          border: 1px solid #0b2946;
-          background: white;
-          color: #0b2946;
-          padding: 11px;
-          border-radius: 6px;
-          font-size: 10px;
           font-weight: 800;
+
           cursor: pointer;
         }
 
-        .driver-profile-save {
-          border: none;
-          background: #f6c20d;
-          color: #0b2946;
-          padding: 11px;
-          border-radius: 6px;
-          font-size: 10px;
-          font-weight: 800;
-          cursor: pointer;
+        .dp-grid {
+          display: grid;
+
+          grid-template-columns:
+            repeat(2, 1fr);
+
+          gap: 16px;
         }
 
-        .driver-profile-save:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
+        .dp-section {
+          grid-column:
+            1 / -1;
 
-        .driver-profile-section-title {
-          grid-column: 1 / -1;
-          margin-top: 5px;
-          padding-top: 16px;
-          border-top: 1px solid #edf0f3;
-          color: #0b2946;
+          margin-top: 6px;
+
+          padding-top: 15px;
+
+          border-top:
+            1px solid #edf0f3;
+
           font-size: 12px;
           font-weight: 800;
         }
 
-        .driver-profile-note {
-          margin-top: 20px;
-          padding: 13px;
-          background: #eef6ff;
-          border-radius: 7px;
-          color: #60758a;
+        .dp-section.first {
+          margin-top: 0;
+
+          padding-top: 0;
+
+          border-top: none;
+        }
+
+        .dp-field label {
+          display: block;
+
+          margin-bottom: 6px;
+
           font-size: 10px;
+          font-weight: 700;
+        }
+
+        .dp-field input {
+          width: 100%;
+
+          box-sizing:
+            border-box;
+
+          padding: 11px 12px;
+
+          border:
+            1px solid #d9e0e6;
+
+          border-radius: 6px;
+
+          outline: none;
+
+          color: #52616e;
+
+          font-size: 11px;
+        }
+
+        .dp-field input:disabled {
+          background: #f7f9fa;
+
+          color: #687681;
+        }
+
+        .dp-field input:not(:disabled):focus {
+          border-color: #f6c20d;
+
+          box-shadow:
+            0 0 0 2px
+            rgba(246,194,13,.13);
+        }
+
+        .dp-actions {
+          display: grid;
+
+          grid-template-columns:
+            1fr 1fr;
+
+          gap: 10px;
+
+          margin-top: 22px;
+        }
+
+        .dp-cancel,
+        .dp-save {
+          padding: 11px;
+
+          border-radius: 6px;
+
+          font-size: 10px;
+          font-weight: 800;
+
+          cursor: pointer;
+        }
+
+        .dp-cancel {
+          border:
+            1px solid #0b2946;
+
+          background: white;
+
+          color: #0b2946;
+        }
+
+        .dp-save {
+          border: none;
+
+          background: #f6c20d;
+
+          color: #0b2946;
+        }
+
+        .dp-save:disabled,
+        .dp-cancel:disabled {
+          opacity: .6;
+
+          cursor: not-allowed;
+        }
+
+        .dp-note {
+          margin-top: 20px;
+
+          padding: 13px;
+
+          background: #eef6ff;
+
+          border-radius: 7px;
+
+          color: #60758a;
+
+          font-size: 10px;
+
           line-height: 1.6;
         }
 
-        @media(max-width: 700px) {
-          .driver-profile-page {
-            padding: 20px;
+        @media(max-width:700px) {
+          .dp-page {
+            padding: 18px;
           }
 
-          .driver-profile-grid,
-          .driver-profile-actions {
-            grid-template-columns: 1fr;
+          .dp-top {
+            flex-direction:
+              column;
+
+            align-items:
+              flex-start;
           }
 
-          .driver-profile-section-title {
+          .dp-grid,
+          .dp-actions {
+            grid-template-columns:
+              1fr;
+          }
+
+          .dp-section {
             grid-column: auto;
-          }
-
-          .driver-profile-top {
-            flex-direction: column;
-            align-items: flex-start;
           }
         }
       `}</style>
 
-      <main className="driver-profile-page">
+      <main className="dp-page">
 
-        <div className="driver-profile-header">
+        <div className="dp-header">
           <h1>My Profile</h1>
 
           <p>
-            View and manage your registered driver
-            and assigned vehicle information.
+            View and manage your
+            registered driver and assigned
+            vehicle information.
           </p>
         </div>
 
         {error && (
-          <div className="driver-profile-alert error">
+          <div className="dp-alert error">
             {error}
           </div>
         )}
 
         {message && (
-          <div className="driver-profile-alert success">
+          <div className="dp-alert success">
             {message}
           </div>
         )}
 
-        <div className="driver-profile-container">
+        <div className="dp-card">
 
-          <div className="driver-profile-top">
+          {/* HEADER */}
 
-            <div className="driver-profile-info">
+          <div className="dp-top">
 
-              <div className="driver-profile-avatar-large">
+            <div className="dp-user">
+
+              <div className="dp-avatar">
                 {getInitials()}
               </div>
 
               <div>
                 <h2>
-                  {profile.name || "Driver"}
+                  {profile.name ||
+                    "Driver"}
                 </h2>
 
-                <div className="driver-profile-badges">
+                <div className="dp-badges">
 
                   <span
-                    className={`driver-profile-verified ${getVerificationClass()}`}
+                    className={`dp-badge ${verificationClass}`}
                   >
-                    {getVerificationLabel()}
+                    {verificationText}
                   </span>
 
-                  <span className="driver-profile-status">
+                  <span className="dp-badge dp-status">
                     {formatStatus(
                       operationalStatus
                     )}
@@ -728,12 +1107,8 @@ function DriverProfile() {
             {!editing && (
               <button
                 type="button"
-                className="driver-profile-edit"
-                onClick={() => {
-                  setEditing(true);
-                  setError("");
-                  setMessage("");
-                }}
+                className="dp-edit"
+                onClick={startEdit}
               >
                 Edit Profile
               </button>
@@ -741,48 +1116,64 @@ function DriverProfile() {
 
           </div>
 
-          <div className="driver-profile-grid">
+          {/* DETAILS */}
 
-            <div className="driver-profile-section-title">
+          <div className="dp-grid">
+
+            <div className="dp-section first">
               Personal Information
             </div>
 
-            <div className="driver-profile-field">
-              <label>Full Name</label>
+            <div className="dp-field">
+              <label>
+                Full Name
+              </label>
 
               <input
                 name="name"
                 value={profile.name}
-                onChange={handleChange}
+                onChange={
+                  handleChange
+                }
                 disabled={!editing}
               />
             </div>
 
-            <div className="driver-profile-field">
-              <label>Phone Number</label>
+            <div className="dp-field">
+              <label>
+                Phone Number
+              </label>
 
               <input
                 name="phone"
                 value={profile.phone}
-                onChange={handleChange}
+                onChange={
+                  handleChange
+                }
                 disabled={!editing}
               />
             </div>
 
-            <div className="driver-profile-field">
-              <label>Email Address</label>
+            <div className="dp-field">
+              <label>
+                Email Address
+              </label>
 
               <input
                 name="email"
                 type="email"
                 value={profile.email}
-                onChange={handleChange}
+                onChange={
+                  handleChange
+                }
                 disabled={!editing}
               />
             </div>
 
-            <div className="driver-profile-field">
-              <label>NIC Number</label>
+            <div className="dp-field">
+              <label>
+                NIC Number
+              </label>
 
               <input
                 value={
@@ -793,12 +1184,14 @@ function DriverProfile() {
               />
             </div>
 
-            <div className="driver-profile-section-title">
+            <div className="dp-section">
               Driver Information
             </div>
 
-            <div className="driver-profile-field">
-              <label>Driving License</label>
+            <div className="dp-field">
+              <label>
+                Driving License
+              </label>
 
               <input
                 value={
@@ -809,8 +1202,10 @@ function DriverProfile() {
               />
             </div>
 
-            <div className="driver-profile-field">
-              <label>Verification Status</label>
+            <div className="dp-field">
+              <label>
+                Verification Status
+              </label>
 
               <input
                 value={formatStatus(
@@ -820,47 +1215,61 @@ function DriverProfile() {
               />
             </div>
 
-            <div className="driver-profile-section-title">
+            <div className="dp-section">
               Assigned Vehicle
             </div>
 
-            <div className="driver-profile-field">
-              <label>Vehicle Type</label>
+            <div className="dp-field">
+              <label>
+                Vehicle Type
+              </label>
 
               <input
-                value={profile.vehicleType}
+                value={
+                  profile.vehicleType
+                }
                 disabled
               />
             </div>
 
-            <div className="driver-profile-field">
-              <label>Vehicle Number</label>
+            <div className="dp-field">
+              <label>
+                Vehicle Number
+              </label>
 
               <input
-                value={profile.vehicleNo}
+                value={
+                  profile.vehicleNo
+                }
                 disabled
               />
             </div>
 
             {vehicle && (
               <>
-                <div className="driver-profile-field">
-                  <label>Vehicle Status</label>
+                <div className="dp-field">
+                  <label>
+                    Vehicle Status
+                  </label>
 
                   <input
                     value={formatStatus(
-                      vehicle.operationalStatus
+                      vehicle
+                        .operationalStatus
                     )}
                     disabled
                   />
                 </div>
 
-                <div className="driver-profile-field">
-                  <label>GPS Available</label>
+                <div className="dp-field">
+                  <label>
+                    GPS Available
+                  </label>
 
                   <input
                     value={
-                      vehicle.gpsAvailable
+                      vehicle
+                        .gpsAvailable
                         ? "Yes"
                         : "No"
                     }
@@ -872,13 +1281,17 @@ function DriverProfile() {
 
           </div>
 
+          {/* SAVE */}
+
           {editing && (
-            <div className="driver-profile-actions">
+            <div className="dp-actions">
 
               <button
                 type="button"
-                className="driver-profile-cancel"
-                onClick={cancelEdit}
+                className="dp-cancel"
+                onClick={
+                  cancelEdit
+                }
                 disabled={saving}
               >
                 Cancel
@@ -886,8 +1299,10 @@ function DriverProfile() {
 
               <button
                 type="button"
-                className="driver-profile-save"
-                onClick={saveProfile}
+                className="dp-save"
+                onClick={
+                  saveProfile
+                }
                 disabled={saving}
               >
                 {saving
@@ -898,11 +1313,14 @@ function DriverProfile() {
             </div>
           )}
 
-          <div className="driver-profile-note">
-            NIC, driving license, verification status and
-            assigned vehicle information are controlled by
-            MMC administration and cannot be changed directly
-            by the driver.
+          <div className="dp-note">
+            NIC, driving license,
+            verification status and
+            assigned vehicle information
+            are controlled by MMC
+            administration and cannot be
+            changed directly by the
+            driver.
           </div>
 
         </div>

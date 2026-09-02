@@ -43,6 +43,7 @@ function MyBookings() {
   };
 
   const user = getStoredUser();
+  const API_BASE_URL = "http://localhost:5171/api";
 
   const getHeaders = () => {
     const token = getToken();
@@ -62,7 +63,9 @@ function MyBookings() {
   }, []);
 
   const loadBookings = async () => {
-    if (!user) {
+    const token = getToken();
+
+    if (!token) {
       setError("Please login to view your bookings.");
       setLoading(false);
       return;
@@ -72,46 +75,33 @@ function MyBookings() {
       setLoading(true);
       setError("");
 
-      const [
-        bookingsResponse,
-        vehicleTypesResponse,
-        driversResponse,
-        usersResponse,
-      ] = await Promise.all([
-        fetch(
-          "http://localhost:5171/api/bookings",
-          {
+      const [bookingsResponse, vehicleTypesResponse] =
+        await Promise.all([
+          fetch(`${API_BASE_URL}/bookings/my`, {
             headers: getHeaders(),
-          }
-        ),
+          }),
 
-        fetch(
-          "http://localhost:5171/api/vehicletypes",
-          {
+          fetch(`${API_BASE_URL}/vehicletypes`, {
             headers: getHeaders(),
-          }
-        ),
-
-        fetch(
-          "http://localhost:5171/api/drivers",
-          {
-            headers: getHeaders(),
-          }
-        ),
-
-        fetch(
-          "http://localhost:5171/api/users",
-          {
-            headers: getHeaders(),
-          }
-        ),
-      ]);
+          }),
+        ]);
 
       if (!bookingsResponse.ok) {
-        throw new Error("Unable to load bookings.");
+        let errorData = null;
+
+        try {
+          errorData = await bookingsResponse.json();
+        } catch {
+          errorData = null;
+        }
+
+        throw new Error(
+          errorData?.message ||
+            "Unable to load your bookings."
+        );
       }
 
-      const allBookings =
+      const passengerBookings =
         await bookingsResponse.json();
 
       const vehicleData =
@@ -119,39 +109,19 @@ function MyBookings() {
           ? await vehicleTypesResponse.json()
           : [];
 
-      const driverData =
-        driversResponse.ok
-          ? await driversResponse.json()
-          : [];
-
-      const userData =
-        usersResponse.ok
-          ? await usersResponse.json()
-          : [];
-
-      const passengerBookings =
-        allBookings.filter(
-          (booking) =>
-            Number(booking.passengerId) ===
-            Number(user.userId)
-        );
-
       passengerBookings.sort((a, b) => {
-        const aDate = new Date(
-          a.createdAt || 0
-        );
-
-        const bDate = new Date(
-          b.createdAt || 0
-        );
-
+        const aDate = new Date(a.createdAt || 0);
+        const bDate = new Date(b.createdAt || 0);
         return bDate - aDate;
       });
 
       setBookings(passengerBookings);
       setVehicleTypes(vehicleData);
-      setDrivers(driverData);
-      setUsers(userData);
+
+      // Passenger pages must not request the global users/drivers lists.
+      // Driver display falls back to "Assigned Driver" when an assignment exists.
+      setDrivers([]);
+      setUsers([]);
     } catch (err) {
       console.error(
         "My bookings error:",
@@ -243,7 +213,7 @@ function MyBookings() {
       );
 
     if (!driver) {
-      return "Not Assigned";
+      return "Assigned Driver";
     }
 
     const driverUser =
@@ -312,7 +282,7 @@ function MyBookings() {
       try {
         const response =
           await fetch(
-            `http://localhost:5171/api/bookings/${booking.bookingId}/history`,
+            `${API_BASE_URL}/bookings/${booking.bookingId}/history`,
             {
               headers: getHeaders(),
             }

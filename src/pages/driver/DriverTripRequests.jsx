@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 function DriverTripRequests() {
+  const API_BASE_URL = "http://localhost:5171/api";
   const [requests, setRequests] = useState([]);
   const [driver, setDriver] = useState(null);
   const [vehicleTypes, setVehicleTypes] = useState([]);
@@ -98,7 +99,7 @@ function DriverTripRequests() {
       setError("");
 
       const driverResponse = await fetch(
-        `http://localhost:5171/api/drivers/user/${user.userId}`,
+        `${API_BASE_URL}/drivers/me`,
         {
           headers: getHeaders(),
         }
@@ -116,11 +117,11 @@ function DriverTripRequests() {
 
       const [bookingsResponse, vehicleTypesResponse] =
         await Promise.all([
-          fetch("http://localhost:5171/api/bookings", {
+          fetch(`${API_BASE_URL}/bookings/my`, {
             headers: getHeaders(),
           }),
 
-          fetch("http://localhost:5171/api/vehicletypes", {
+          fetch(`${API_BASE_URL}/vehicletypes`, {
             headers: getHeaders(),
           }),
         ]);
@@ -184,7 +185,7 @@ function DriverTripRequests() {
       setMessage("");
 
       const response = await fetch(
-        `http://localhost:5171/api/bookings/${bookingId}/accept`,
+        `${API_BASE_URL}/bookings/${bookingId}/accept`,
         {
           method: "PUT",
           headers: getHeaders(),
@@ -235,7 +236,7 @@ function DriverTripRequests() {
       setMessage("");
 
       const response = await fetch(
-        `http://localhost:5171/api/bookings/${bookingId}/reject`,
+        `${API_BASE_URL}/bookings/${bookingId}/reject`,
         {
           method: "PUT",
           headers: getHeaders(),

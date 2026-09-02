@@ -1,272 +1,134 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+
+const API_BASE_URL = "http://localhost:5171/api";
+
+const getToken = () =>
+  localStorage.getItem("token") ||
+  localStorage.getItem("authToken") ||
+  localStorage.getItem("accessToken") ||
+  sessionStorage.getItem("token") ||
+  "";
+
+const authHeaders = () => ({
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${getToken()}`,
+});
+
+const safeJson = async (response) => {
+  const raw = await response.text();
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return { message: raw };
+  }
+};
+
+const formatText = (value) =>
+  (value || "—")
+    .toString()
+    .replaceAll("_", " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
 
 function OperationsManagement() {
-  const [officers, setOfficers] = useState([
-    {
-      id: "OP001",
-      name: "Amal Fernando",
-      phone: "0711111111",
-      email: "amal@mmc.lk",
-      shift: "Morning",
-      status: "Active",
-    },
-    {
-      id: "OP002",
-      name: "Nimali Silva",
-      phone: "0772222222",
-      email: "nimali.ops@mmc.lk",
-      shift: "Morning",
-      status: "Active",
-    },
-    {
-      id: "OP003",
-      name: "Kasun Jayasuriya",
-      phone: "0753333333",
-      email: "kasun.ops@mmc.lk",
-      shift: "Evening",
-      status: "Inactive",
-    },
-  ]);
-
+  const navigate = useNavigate();
+  const [users, setUsers] = useState([]);
   const [search, setSearch] = useState("");
-  const [shift, setShift] = useState("All");
-  const [status, setStatus] = useState("All");
-  const [modal, setModal] = useState(null);
-  const [selected, setSelected] = useState(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
 
-  const filtered = officers.filter((item) => {
-    const text =
-      item.id.toLowerCase().includes(search.toLowerCase()) ||
-      item.name.toLowerCase().includes(search.toLowerCase());
+  const loadUsers = async () => {
+    try {
+      setError("");
+      const res = await fetch(`${API_BASE_URL}/users`, { headers: authHeaders() });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data?.message || "Unable to load Taxi Operators.");
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e.message || "Unable to load Taxi Operators.");
+    }
+  };
 
-    const shiftMatch = shift === "All" || item.shift === shift;
-    const statusMatch = status === "All" || item.status === status;
+  useEffect(() => { loadUsers(); }, []);
 
-    return text && shiftMatch && statusMatch;
-  });
+  const operators = useMemo(() => users
+    .filter((u) => (u.roles || []).includes("TAXI_OPERATIONS"))
+    .filter((u) => `${u.fullName || ""} ${u.email || ""} ${u.phone || ""}`.toLowerCase().includes(search.toLowerCase())),
+  [users, search]);
 
-  const toggleStatus = (id) => {
-    setOfficers(
-      officers.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              status: item.status === "Active" ? "Inactive" : "Active",
-            }
-          : item
-      )
-    );
+  const changeStatus = async (u) => {
+    try {
+      const next = u.accountStatus === "ACTIVE" ? "INACTIVE" : "ACTIVE";
+      const res = await fetch(`${API_BASE_URL}/users/${u.userId}/status`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ status: next }),
+      });
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data?.message || "Unable to update Taxi Operator.");
+      setMessage("Taxi Operator account updated.");
+      await loadUsers();
+    } catch (e) {
+      setError(e.message);
+    }
   };
 
   return (
     <main className="sa-page">
       <div className="sa-header">
-        <div>
-          <h1>Taxi Operations Management</h1>
-          <p>
-            Manage Taxi Operations Officer accounts and daily booking operations.
-          </p>
-        </div>
-
-        <button
-          className="sa-primary-btn"
-          onClick={() => alert("Add Operations Officer form - frontend demo")}
-        >
-          + Add Operations Officer
-        </button>
+        <div><h1>Taxi Operations Management</h1><p>Manage Taxi Operator accounts and operational access.</p></div>
+        <button className="sa-primary-btn" onClick={() => navigate("/super-admin/users")}>+ Create Taxi Operator</button>
       </div>
 
-      <div className="sa-summary-grid">
-        <div className="sa-summary-card">
-          <span>Total Officers</span>
-          <h2>{officers.length}</h2>
-        </div>
+      {error && <div className="sa-info-box"><strong>Error</strong><p>{error}</p></div>}
+      {message && <div className="sa-info-box"><strong>Success</strong><p>{message}</p></div>}
 
-        <div className="sa-summary-card">
-          <span>Active Officers</span>
-          <h2>{officers.filter((o) => o.status === "Active").length}</h2>
-        </div>
-
-        <div className="sa-summary-card">
-          <span>Morning Shift</span>
-          <h2>{officers.filter((o) => o.shift === "Morning").length}</h2>
-        </div>
-
-        <div className="sa-summary-card">
-          <span>Evening Shift</span>
-          <h2>{officers.filter((o) => o.shift === "Evening").length}</h2>
-        </div>
+      <div className="sa-summary-grid three">
+        <div className="sa-summary-card"><span>Total Taxi Operators</span><h2>{operators.length}</h2></div>
+        <div className="sa-summary-card"><span>Active</span><h2>{operators.filter((o) => o.accountStatus === "ACTIVE").length}</h2></div>
+        <div className="sa-summary-card"><span>Inactive</span><h2>{operators.filter((o) => o.accountStatus !== "ACTIVE").length}</h2></div>
       </div>
 
       <section className="sa-card">
-        <h2>Taxi Operations Responsibilities</h2>
-
+        <h2>Taxi Operator Responsibilities</h2>
         <div className="sa-grid-2">
-          <div className="sa-detail">
-            <span>Website Bookings</span>
-            <strong>Monitor and coordinate online passenger bookings.</strong>
-          </div>
-
-          <div className="sa-detail">
-            <span>Phone Bookings</span>
-            <strong>Create bookings for passengers who call MMC.</strong>
-          </div>
-
-          <div className="sa-detail">
-            <span>On-Site Bookings</span>
-            <strong>Create bookings at the Makumbura taxi counter.</strong>
-          </div>
-
-          <div className="sa-detail">
-            <span>Operational Monitoring</span>
-            <strong>Monitor drivers, vehicles and trip status.</strong>
-          </div>
+          <div className="sa-detail"><span>Website Bookings</span><strong>Monitor and coordinate online bookings.</strong></div>
+          <div className="sa-detail"><span>Phone Bookings</span><strong>Create bookings for callers.</strong></div>
+          <div className="sa-detail"><span>On-Site Bookings</span><strong>Create bookings at the MMC counter.</strong></div>
+          <div className="sa-detail"><span>Operational Monitoring</span><strong>Monitor drivers, vehicles and trip status.</strong></div>
         </div>
       </section>
 
       <section className="sa-card">
         <div className="sa-toolbar">
-          <input
-            className="sa-input"
-            placeholder="Search operations officer..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
-
-          <select
-            className="sa-select"
-            value={shift}
-            onChange={(e) => setShift(e.target.value)}
-          >
-            <option value="All">All Shifts</option>
-            <option value="Morning">Morning</option>
-            <option value="Evening">Evening</option>
-          </select>
-
-          <select
-            className="sa-select"
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-          >
-            <option value="All">All Status</option>
-            <option value="Active">Active</option>
-            <option value="Inactive">Inactive</option>
-          </select>
+          <input className="sa-input" placeholder="Search Taxi Operator..." value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
 
         <div className="sa-table-wrapper">
           <table className="sa-table">
-            <thead>
-              <tr>
-                <th>Officer ID</th>
-                <th>Name</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Shift</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-
+            <thead><tr><th>ID</th><th>Name</th><th>Phone</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              {filtered.map((officer) => (
-                <tr key={officer.id}>
-                  <td className="sa-id">{officer.id}</td>
-                  <td>{officer.name}</td>
-                  <td>{officer.phone}</td>
-                  <td>{officer.email}</td>
-                  <td>{officer.shift}</td>
-                  <td>
-                    <span
-                      className={`sa-badge ${
-                        officer.status === "Active" ? "green" : "red"
-                      }`}
-                    >
-                      {officer.status}
-                    </span>
-                  </td>
-
-                  <td>
-                    <div className="sa-actions">
-                      <button
-                        className="sa-btn-view"
-                        onClick={() => {
-                          setSelected(officer);
-                          setModal("view");
-                        }}
-                      >
-                        View
-                      </button>
-
-                      <button
-                        className="sa-btn-edit"
-                        onClick={() => alert("Edit officer - frontend demo")}
-                      >
-                        Edit
-                      </button>
-
-                      <button
-                        className="sa-btn-neutral"
-                        onClick={() => toggleStatus(officer.id)}
-                      >
-                        {officer.status === "Active" ? "Disable" : "Enable"}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {operators.length === 0 ? (
+                <tr><td colSpan="6">No Taxi Operator accounts found.</td></tr>
+              ) : (
+                operators.map((o) => (
+                  <tr key={o.userId}>
+                    <td className="sa-id">USR{String(o.userId).padStart(3, "0")}</td>
+                    <td>{o.fullName}</td>
+                    <td>{o.phone}</td>
+                    <td>{o.email}</td>
+                    <td><span className={`sa-badge ${o.accountStatus === "ACTIVE" ? "green" : "red"}`}>{formatText(o.accountStatus)}</span></td>
+                    <td><button className="sa-btn-neutral" onClick={() => changeStatus(o)}>{o.accountStatus === "ACTIVE" ? "Disable" : "Enable"}</button></td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
       </section>
-
-      {modal === "view" && selected && (
-        <div className="sa-modal-overlay">
-          <div className="sa-modal">
-            <div className="sa-modal-header">
-              <h2>Operations Officer Details</h2>
-
-              <button className="sa-close" onClick={() => setModal(null)}>
-                ×
-              </button>
-            </div>
-
-            <div className="sa-modal-body">
-              <div className="sa-detail-grid">
-                <div className="sa-detail">
-                  <span>Officer ID</span>
-                  <strong>{selected.id}</strong>
-                </div>
-
-                <div className="sa-detail">
-                  <span>Name</span>
-                  <strong>{selected.name}</strong>
-                </div>
-
-                <div className="sa-detail">
-                  <span>Phone</span>
-                  <strong>{selected.phone}</strong>
-                </div>
-
-                <div className="sa-detail">
-                  <span>Email</span>
-                  <strong>{selected.email}</strong>
-                </div>
-
-                <div className="sa-detail">
-                  <span>Shift</span>
-                  <strong>{selected.shift}</strong>
-                </div>
-
-                <div className="sa-detail">
-                  <span>Status</span>
-                  <strong>{selected.status}</strong>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </main>
   );
 }
