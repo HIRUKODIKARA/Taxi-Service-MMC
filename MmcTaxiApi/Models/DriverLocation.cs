@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -21,6 +22,11 @@ namespace MmcTaxiApi.Models
         [Required]
         [Column("longitude")]
         public decimal Longitude { get; set; }
+
+        [Required]
+        [Column("tracking_source")]
+        [MaxLength(20)]
+        public string TrackingSource { get; set; } = "PHONE_MAP";
 
         [Column("recorded_at")]
         public DateTime RecordedAt { get; set; }

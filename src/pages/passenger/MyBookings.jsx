@@ -59,10 +59,16 @@ function MyBookings() {
   };
 
   useEffect(() => {
-    loadBookings();
+    loadBookings(false);
+
+    const intervalId = setInterval(() => {
+      loadBookings(true);
+    }, 5000);
+
+    return () => clearInterval(intervalId);
   }, []);
 
-  const loadBookings = async () => {
+  const loadBookings = async (silent = false) => {
     const token = getToken();
 
     if (!token) {
@@ -72,8 +78,10 @@ function MyBookings() {
     }
 
     try {
-      setLoading(true);
-      setError("");
+      if (!silent) {
+        setLoading(true);
+        setError("");
+      }
 
       const [bookingsResponse, vehicleTypesResponse] =
         await Promise.all([
@@ -128,12 +136,16 @@ function MyBookings() {
         err
       );
 
-      setError(
-        err.message ||
-          "Unable to load your bookings."
-      );
+      if (!silent) {
+        setError(
+          err.message ||
+            "Unable to load your bookings."
+        );
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   };
 
@@ -165,6 +177,9 @@ function MyBookings() {
 
       case "DRIVER_ARRIVING":
         return "arriving";
+
+      case "DRIVER_ARRIVED":
+        return "arrived";
 
       case "ON_RIDE":
         return "onride";
@@ -238,6 +253,7 @@ function MyBookings() {
         "WAITING_FOR_DRIVER",
         "ACCEPTED",
         "DRIVER_ARRIVING",
+        "DRIVER_ARRIVED",
         "ON_RIDE",
       ].includes(status)
     ) {
@@ -272,6 +288,46 @@ function MyBookings() {
               booking.bookingStatus
             ) === filter
         );
+
+  const activeBooking = bookings.find((booking) =>
+    ["PENDING", "WAITING_FOR_DRIVER", "ACCEPTED", "DRIVER_ARRIVING", "DRIVER_ARRIVED", "ON_RIDE"].includes(
+      booking.bookingStatus
+    )
+  );
+
+  const rideSteps = [
+    { key: "PENDING", label: "Booking Requested" },
+    { key: "WAITING_FOR_DRIVER", label: "Finding Driver" },
+    { key: "ACCEPTED", label: "Driver Accepted" },
+    { key: "DRIVER_ARRIVING", label: "Driver Arriving" },
+    { key: "DRIVER_ARRIVED", label: "Driver Arrived" },
+    { key: "ON_RIDE", label: "On Ride" },
+    { key: "COMPLETED", label: "Completed" },
+  ];
+
+  const getStepIndex = (status) => {
+    const index = rideSteps.findIndex((step) => step.key === status);
+    return index < 0 ? 0 : index;
+  };
+
+  const getLiveMessage = (status) => {
+    switch (status) {
+      case "PENDING":
+        return "Your booking has been received. Waiting for the Taxi Operator.";
+      case "WAITING_FOR_DRIVER":
+        return "A driver and vehicle are being arranged for your trip.";
+      case "ACCEPTED":
+        return "Your driver has accepted the trip.";
+      case "DRIVER_ARRIVING":
+        return "Your driver is on the way to the pickup location.";
+      case "DRIVER_ARRIVED":
+        return "Your driver has arrived at the pickup location.";
+      case "ON_RIDE":
+        return "Your trip is now in progress.";
+      default:
+        return "Your booking status will update automatically.";
+    }
+  };
 
   const handleViewBooking =
     async (booking) => {
@@ -524,6 +580,11 @@ function MyBookings() {
         .booking-status.arriving {
           background: #e7f0ff;
           color: #245b96;
+        }
+
+        .booking-status.arrived {
+          background: #e8f6ec;
+          color: #18763a;
         }
 
         .booking-status.onride {
@@ -780,10 +841,155 @@ function MyBookings() {
           font-size: 9px;
         }
 
+        .live-ride-card {
+          margin-bottom: 20px;
+          padding: 20px;
+          background: white;
+          border: 1px solid #e2e7ec;
+          border-radius: 12px;
+          box-shadow: 0 5px 18px rgba(11,41,70,0.06);
+        }
+
+        .live-ride-top {
+          display: flex;
+          justify-content: space-between;
+          align-items: flex-start;
+          gap: 15px;
+          margin-bottom: 18px;
+        }
+
+        .live-ride-top h2 {
+          margin: 0 0 5px;
+          color: #0b2946;
+          font-size: 18px;
+        }
+
+        .live-ride-top p {
+          margin: 0;
+          color: #71808e;
+          font-size: 10px;
+        }
+
+        .live-indicator {
+          padding: 7px 10px;
+          border-radius: 20px;
+          background: #e8f6ec;
+          color: #24733d;
+          font-size: 8px;
+          font-weight: 800;
+          white-space: nowrap;
+        }
+
+        .ride-route {
+          display: grid;
+          grid-template-columns: 1fr auto 1fr;
+          gap: 12px;
+          align-items: center;
+          padding: 14px;
+          margin-bottom: 18px;
+          background: #f8fafc;
+          border-radius: 9px;
+        }
+
+        .ride-route span {
+          display: block;
+          margin-bottom: 4px;
+          color: #89949e;
+          font-size: 8px;
+          text-transform: uppercase;
+        }
+
+        .ride-route strong {
+          color: #0b2946;
+          font-size: 10px;
+        }
+
+        .route-arrow {
+          color: #f6c20d;
+          font-size: 22px;
+          font-weight: 900;
+        }
+
+        .ride-progress {
+          display: grid;
+          grid-template-columns: repeat(7,1fr);
+          gap: 5px;
+          margin-bottom: 17px;
+        }
+
+        .ride-step {
+          position: relative;
+          padding-top: 13px;
+          color: #9aa5af;
+          text-align: center;
+          font-size: 7px;
+        }
+
+        .ride-step::before {
+          content: "";
+          position: absolute;
+          top: 0;
+          left: 50%;
+          width: 9px;
+          height: 9px;
+          transform: translateX(-50%);
+          border-radius: 50%;
+          background: #d9e0e6;
+        }
+
+        .ride-step.done,
+        .ride-step.current {
+          color: #0b2946;
+          font-weight: 700;
+        }
+
+        .ride-step.done::before,
+        .ride-step.current::before {
+          background: #f6c20d;
+        }
+
+        .live-info-grid {
+          display: grid;
+          grid-template-columns: repeat(3,1fr);
+          gap: 10px;
+        }
+
+        .live-info {
+          padding: 11px;
+          border: 1px solid #e7ebef;
+          border-radius: 7px;
+        }
+
+        .live-info span {
+          display: block;
+          margin-bottom: 4px;
+          color: #8a959f;
+          font-size: 8px;
+        }
+
+        .live-info strong {
+          color: #0b2946;
+          font-size: 10px;
+        }
+
+        .live-message {
+          margin-top: 13px;
+          padding: 11px 13px;
+          border-radius: 7px;
+          background: #fff8d8;
+          color: #66520a;
+          font-size: 9px;
+          line-height: 1.5;
+        }
+
         @media(max-width: 850px) {
           .booking-summary {
             grid-template-columns:
               repeat(2, 1fr);
+          }
+
+          .live-info-grid {
+            grid-template-columns: 1fr;
           }
 
           .my-bookings-page {
@@ -796,6 +1002,20 @@ function MyBookings() {
           .booking-detail-grid {
             grid-template-columns:
               1fr;
+          }
+
+          .ride-route {
+            grid-template-columns: 1fr;
+          }
+
+          .route-arrow {
+            transform: rotate(90deg);
+            text-align: center;
+          }
+
+          .ride-progress {
+            grid-template-columns: repeat(3,1fr);
+            row-gap: 14px;
           }
 
           .booking-detail-item.full {
@@ -812,6 +1032,70 @@ function MyBookings() {
           View your current and previous
           taxi bookings.
         </p>
+
+        {activeBooking && (
+          <section className="live-ride-card">
+            <div className="live-ride-top">
+              <div>
+                <h2>Current Ride · Booking #{activeBooking.bookingId}</h2>
+                <p>{getLiveMessage(activeBooking.bookingStatus)}</p>
+              </div>
+              <span className="live-indicator">● LIVE · Auto updating</span>
+            </div>
+
+            <div className="ride-route">
+              <div>
+                <span>Pickup</span>
+                <strong>{activeBooking.pickupLocation || "—"}</strong>
+              </div>
+              <div className="route-arrow">→</div>
+              <div>
+                <span>Destination</span>
+                <strong>{activeBooking.destination || "—"}</strong>
+              </div>
+            </div>
+
+            <div className="ride-progress">
+              {rideSteps.map((step, index) => {
+                const currentIndex = getStepIndex(activeBooking.bookingStatus);
+                return (
+                  <div
+                    key={step.key}
+                    className={`ride-step ${
+                      index < currentIndex
+                        ? "done"
+                        : index === currentIndex
+                        ? "current"
+                        : ""
+                    }`}
+                  >
+                    {step.label}
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="live-info-grid">
+              <div className="live-info">
+                <span>Current Status</span>
+                <strong>{formatStatus(activeBooking.bookingStatus)}</strong>
+              </div>
+              <div className="live-info">
+                <span>Vehicle Type</span>
+                <strong>{getVehicleName(activeBooking.vehicleTypeId)}</strong>
+              </div>
+              <div className="live-info">
+                <span>Driver</span>
+                <strong>{getDriverName(activeBooking.assignedDriverId)}</strong>
+              </div>
+            </div>
+
+            <div className="live-message">
+              This booking checks for status changes automatically every 5 seconds.
+              You do not need to refresh this page.
+            </div>
+          </section>
+        )}
 
         <div className="booking-summary">
 

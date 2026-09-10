@@ -19,9 +19,31 @@ namespace MmcTaxiApi.Models
         [MaxLength(50)]
         public string DrivingLicenseNo { get; set; } = string.Empty;
 
+        // ==========================================
+        // DRIVER PERSONAL / REGISTRATION DETAILS
+        // ==========================================
+
+        [Column("address")]
+        [MaxLength(255)]
+        public string? Address { get; set; }
+
+        [Column("date_of_birth")]
+        public DateTime? DateOfBirth { get; set; }
+
+        [Column("driving_license_expiry")]
+        public DateTime? DrivingLicenseExpiry { get; set; }
+
+        // ==========================================
+        // DRIVER VERIFICATION
+        // ==========================================
+
         [Column("verification_status")]
         [MaxLength(20)]
         public string VerificationStatus { get; set; } = "PENDING";
+
+        // ==========================================
+        // DRIVER OPERATIONAL STATUS
+        // ==========================================
 
         [Column("operational_status")]
         [MaxLength(20)]
@@ -29,6 +51,10 @@ namespace MmcTaxiApi.Models
 
         [Column("gps_enabled")]
         public bool GpsEnabled { get; set; }
+
+        // ==========================================
+        // DATES
+        // ==========================================
 
         [Column("verified_at")]
         public DateTime? VerifiedAt { get; set; }

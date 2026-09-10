@@ -16,15 +16,10 @@ namespace MmcTaxiApi.Data
         // =========================================================
 
         public DbSet<Role> Roles { get; set; }
-
         public DbSet<User> Users { get; set; }
-
         public DbSet<UserRole> UserRoles { get; set; }
-
         public DbSet<Permission> Permissions { get; set; }
-
         public DbSet<RolePermission> RolePermissions { get; set; }
-
 
         // =========================================================
         // PASSWORD RESET
@@ -32,35 +27,28 @@ namespace MmcTaxiApi.Data
 
         public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
 
-
         // =========================================================
         // VEHICLES
         // =========================================================
 
         public DbSet<VehicleType> VehicleTypes { get; set; }
-
         public DbSet<Vehicle> Vehicles { get; set; }
-
+        public DbSet<VehiclePhoto> VehiclePhotos { get; set; }
 
         // =========================================================
         // DRIVERS
         // =========================================================
 
         public DbSet<Driver> Drivers { get; set; }
-
         public DbSet<DriverDocument> DriverDocuments { get; set; }
-
         public DbSet<DriverLocation> DriverLocations { get; set; }
-
 
         // =========================================================
         // BOOKINGS
         // =========================================================
 
         public DbSet<Booking> Bookings { get; set; }
-
         public DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
-
 
         // =========================================================
         // PAYMENTS
@@ -68,13 +56,11 @@ namespace MmcTaxiApi.Data
 
         public DbSet<Payment> Payments { get; set; }
 
-
         // =========================================================
         // RATINGS & FEEDBACK
         // =========================================================
 
         public DbSet<Rating> Ratings { get; set; }
-
 
         // =========================================================
         // NOTIFICATIONS
@@ -82,13 +68,11 @@ namespace MmcTaxiApi.Data
 
         public DbSet<Notification> Notifications { get; set; }
 
-
         // =========================================================
         // ACTIVITY LOGS
         // =========================================================
 
         public DbSet<ActivityLog> ActivityLogs { get; set; }
-
 
         // =========================================================
         // SYSTEM SETTINGS
@@ -96,6 +80,14 @@ namespace MmcTaxiApi.Data
 
         public DbSet<SystemSetting> SystemSettings { get; set; }
 
+        // =========================================================
+        // OPERATIONAL AREAS
+        // =========================================================
+
+        public DbSet<OperationalArea> OperationalAreas { get; set; }
+
+        public DbSet<TaxiOperatorOperationalArea>
+            TaxiOperatorOperationalAreas { get; set; }
 
         // =========================================================
         // DATABASE TABLE MAPPING
@@ -104,7 +96,6 @@ namespace MmcTaxiApi.Data
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
-
 
             // =====================================================
             // PERMISSIONS TABLE
@@ -128,7 +119,6 @@ namespace MmcTaxiApi.Data
                 entity.Property(p => p.CreatedAt)
                     .HasColumnName("created_at");
             });
-
 
             // =====================================================
             // ROLE PERMISSIONS TABLE
@@ -156,7 +146,6 @@ namespace MmcTaxiApi.Data
                 })
                 .IsUnique();
             });
-
 
             // =====================================================
             // PASSWORD RESET TOKENS TABLE
@@ -202,6 +191,97 @@ namespace MmcTaxiApi.Data
                     .WithMany()
                     .HasForeignKey(prt => prt.UserId)
                     .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // =====================================================
+            // VEHICLE PHOTOS TABLE
+            // =====================================================
+
+            modelBuilder.Entity<VehiclePhoto>(entity =>
+            {
+                entity.ToTable("vehicle_photos");
+
+                entity.HasKey(vp => vp.VehiclePhotoId);
+
+                entity.Property(vp => vp.VehiclePhotoId)
+                    .HasColumnName("vehicle_photo_id");
+
+                entity.Property(vp => vp.VehicleId)
+                    .HasColumnName("vehicle_id");
+
+                entity.Property(vp => vp.PhotoType)
+                    .HasColumnName("photo_type")
+                    .HasMaxLength(20)
+                    .IsRequired();
+
+                entity.Property(vp => vp.FilePath)
+                    .HasColumnName("file_path")
+                    .HasMaxLength(255)
+                    .IsRequired();
+
+                entity.Property(vp => vp.UploadedAt)
+                    .HasColumnName("uploaded_at");
+
+                entity.HasIndex(vp => vp.VehicleId);
+
+                entity.HasOne<Vehicle>()
+                    .WithMany()
+                    .HasForeignKey(vp => vp.VehicleId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            // =====================================================
+            // TAXI OPERATOR OPERATIONAL AREAS TABLE
+            // =====================================================
+
+            modelBuilder.Entity<TaxiOperatorOperationalArea>(entity =>
+            {
+                entity.ToTable(
+                    "TaxiOperatorOperationalAreas");
+
+                entity.HasKey(x =>
+                    x.TaxiOperatorOperationalAreaId);
+
+                entity.Property(x =>
+                        x.TaxiOperatorOperationalAreaId)
+                    .HasColumnName(
+                        "TaxiOperatorOperationalAreaId");
+
+                entity.Property(x => x.UserId)
+                    .HasColumnName("user_id");
+
+                entity.Property(x =>
+                        x.OperationalAreaId)
+                    .HasColumnName(
+                        "OperationalAreaId");
+
+                entity.Property(x => x.IsActive)
+                    .HasColumnName("IsActive");
+
+                entity.Property(x => x.CreatedAt)
+                    .HasColumnName("CreatedAt");
+
+                entity.Property(x => x.UpdatedAt)
+                    .HasColumnName("UpdatedAt");
+
+                entity.HasIndex(x => new
+                {
+                    x.UserId,
+                    x.OperationalAreaId
+                })
+                .IsUnique();
+
+                entity.HasOne(x => x.User)
+                    .WithMany()
+                    .HasForeignKey(x => x.UserId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasOne(x =>
+                        x.OperationalArea)
+                    .WithMany()
+                    .HasForeignKey(x =>
+                        x.OperationalAreaId)
+                    .OnDelete(DeleteBehavior.Restrict);
             });
         }
     }

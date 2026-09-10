@@ -39,8 +39,10 @@ import OperationsManagement from "./pages/superAdmin/OperationsManagement";
 import UserManagement from "./pages/superAdmin/UserManagement";
 import DriverManagement from "./pages/superAdmin/DriverManagement";
 import DriverVerification from "./pages/superAdmin/DriverVerification";
+import DriverRegistration from "./pages/superAdmin/DriverRegistration";
 import VehicleManagement from "./pages/superAdmin/VehicleManagement";
 import VehicleTypes from "./pages/superAdmin/VehicleTypes";
+import OperationalAreas from "./pages/superAdmin/OperationalAreas";
 import BookingManagement from "./pages/superAdmin/BookingManagement";
 import RolesPermissions from "./pages/superAdmin/RolesPermissions";
 import Reports from "./pages/superAdmin/Reports";
@@ -62,6 +64,7 @@ import AdminVehicleTypes from "./pages/admin/AdminVehicleTypes";
 import AdminBookings from "./pages/admin/AdminBookings";
 import AdminReports from "./pages/admin/AdminReports";
 import AdminActivity from "./pages/admin/AdminActivity";
+import TaxiOperatorAreaManagement from "./pages/TaxiOperatorAreaManagement";
 
 /* =========================================================
    TAXI OPERATOR
@@ -430,6 +433,11 @@ function App() {
           />
 
           <Route
+            path="driver-registration"
+            element={<DriverRegistration />}
+          />
+
+          <Route
             path="driver-verification"
             element={<DriverVerification />}
           />
@@ -442,6 +450,16 @@ function App() {
           <Route
             path="vehicle-types"
             element={<VehicleTypes />}
+          />
+
+          <Route
+            path="operational-areas"
+            element={<OperationalAreas />}
+          />
+
+          <Route
+            path="taxi-operator-areas"
+            element={<TaxiOperatorAreaManagement />}
           />
 
           <Route
@@ -512,6 +530,11 @@ function App() {
           />
 
           <Route
+            path="driver-registration"
+            element={<DriverRegistration />}
+          />
+
+          <Route
             path="driver-verification"
             element={
               <AdminDriverVerification />
@@ -526,6 +549,11 @@ function App() {
           <Route
             path="vehicle-types"
             element={<AdminVehicleTypes />}
+          />
+
+          <Route
+            path="taxi-operator-areas"
+            element={<TaxiOperatorAreaManagement />}
           />
 
           <Route

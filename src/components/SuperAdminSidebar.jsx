@@ -138,6 +138,7 @@ function SuperAdminSidebar() {
         </div>
 
         <nav className="sa-menu">
+
           <NavLink
             to="/super-admin/dashboard"
             className={menuClass}
@@ -173,6 +174,14 @@ function SuperAdminSidebar() {
             🚖 Drivers
           </NavLink>
 
+          {/* NEW - DRIVER REGISTRATION */}
+          <NavLink
+            to="/super-admin/driver-registration"
+            className={menuClass}
+          >
+            ➕ Driver Registration
+          </NavLink>
+
           <NavLink
             to="/super-admin/driver-verification"
             className={menuClass}
@@ -192,6 +201,20 @@ function SuperAdminSidebar() {
             className={menuClass}
           >
             🚘 Vehicle Types
+          </NavLink>
+
+          <NavLink
+            to="/super-admin/operational-areas"
+            className={menuClass}
+          >
+            📍 Operational Areas
+          </NavLink>
+
+          <NavLink
+            to="/super-admin/taxi-operator-areas"
+            className={menuClass}
+          >
+            🗺️ Taxi Operator Areas
           </NavLink>
 
           <NavLink
@@ -228,6 +251,7 @@ function SuperAdminSidebar() {
           >
             ⚙️ System Settings
           </NavLink>
+
         </nav>
 
         <button

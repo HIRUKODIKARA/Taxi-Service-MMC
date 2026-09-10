@@ -15,43 +15,30 @@ namespace MmcTaxiApi.Controllers
     {
         private readonly ApplicationDbContext _context;
 
-        public DriverLocationsController(
-            ApplicationDbContext context)
+        private const string PHONE_MAP = "PHONE_MAP";
+        private const string GPS_DEVICE = "GPS_DEVICE";
+
+        public DriverLocationsController(ApplicationDbContext context)
         {
             _context = context;
         }
 
-        // =========================================================
-        // HELPER - Get logged-in user ID from JWT
-        // =========================================================
         private int? GetCurrentUserId()
         {
-            var claim =
-                User.FindFirst(ClaimTypes.NameIdentifier);
-
-            if (claim == null ||
-                !int.TryParse(claim.Value, out var userId))
-            {
+            var claim = User.FindFirst(ClaimTypes.NameIdentifier);
+            if (claim == null || !int.TryParse(claim.Value, out var userId))
                 return null;
-            }
-
             return userId;
         }
 
-        private async Task<bool> HasPermissionAsync(
-            string permissionName)
+        private async Task<bool> HasPermissionAsync(string permissionName)
         {
             if (User.IsInRole("SUPER_ADMIN"))
-            {
                 return true;
-            }
 
             var currentUserId = GetCurrentUserId();
-
             if (currentUserId == null)
-            {
                 return false;
-            }
 
             return await (
                 from userRole in _context.UserRoles
@@ -65,406 +52,320 @@ namespace MmcTaxiApi.Controllers
             ).AnyAsync();
         }
 
-        // =========================================================
-        // HELPER - Get current driver's profile
-        // =========================================================
         private async Task<Driver?> GetCurrentDriverAsync()
         {
             var currentUserId = GetCurrentUserId();
-
             if (currentUserId == null)
-            {
                 return null;
-            }
 
             return await _context.Drivers
-                .FirstOrDefaultAsync(d =>
-                    d.UserId == currentUserId.Value);
+                .FirstOrDefaultAsync(d => d.UserId == currentUserId.Value);
         }
 
-        // =========================================================
-        // HELPER
-        // Check if current user may view driver's location
-        // =========================================================
-        private async Task<bool> CanViewDriverLocationAsync(
-            int driverId)
+        private async Task<bool> CanViewDriverLocationAsync(int driverId)
         {
             var currentUserId = GetCurrentUserId();
-
             if (currentUserId == null)
-            {
                 return false;
-            }
 
-            // Users with VIEW_DRIVER_LOCATION may monitor drivers.
             if (await HasPermissionAsync("VIEW_DRIVER_LOCATION"))
-            {
                 return true;
-            }
 
-            // Driver can view own location
             if (User.IsInRole("DRIVER"))
             {
-                return await _context.Drivers
-                    .AnyAsync(d =>
-                        d.DriverId == driverId &&
-                        d.UserId == currentUserId.Value);
+                return await _context.Drivers.AnyAsync(d =>
+                    d.DriverId == driverId &&
+                    d.UserId == currentUserId.Value);
             }
 
-            // Passenger can see location only when the driver
-            // is assigned to passenger's active booking.
             if (User.IsInRole("PASSENGER"))
             {
-                return await _context.Bookings
-                    .AnyAsync(b =>
-                        b.PassengerId ==
-                            currentUserId.Value &&
-                        b.AssignedDriverId ==
-                            driverId &&
-                        (
-                            b.BookingStatus == "ACCEPTED" ||
-                            b.BookingStatus == "DRIVER_ARRIVING" ||
-                            b.BookingStatus == "ON_RIDE"
-                        ));
+                return await _context.Bookings.AnyAsync(b =>
+                    b.PassengerId == currentUserId.Value &&
+                    b.AssignedDriverId == driverId &&
+                    (
+                        b.BookingStatus == "ACCEPTED" ||
+                        b.BookingStatus == "DRIVER_ARRIVING" ||
+                        b.BookingStatus == "DRIVER_ARRIVED" ||
+                        b.BookingStatus == "ON_RIDE"
+                    ));
             }
 
             return false;
         }
 
-        // =========================================================
-        // GET: api/driverlocations
-        //
-        // Full location collection:
-        // Super Admin / Admin / Taxi Operations only
-        // =========================================================
+        private string NormalizeTrackingSource(string? source)
+        {
+            var normalized = (source ?? PHONE_MAP).Trim().ToUpperInvariant();
+            return normalized == GPS_DEVICE ? GPS_DEVICE : PHONE_MAP;
+        }
+
+        private object BuildTrackingStatus(DateTime recordedAt, string trackingSource)
+        {
+            var ageSeconds = Math.Max(0, (DateTime.Now - recordedAt).TotalSeconds);
+
+            var connectionStatus = ageSeconds <= 30
+                ? "LIVE"
+                : ageSeconds <= 60
+                    ? "UNSTABLE"
+                    : "OFFLINE";
+
+            return new
+            {
+                connectionStatus,
+                isOnline = ageSeconds <= 60,
+                ageSeconds = Math.Round(ageSeconds),
+                trackingSource
+            };
+        }
+
         [HttpGet]
         [HasPermission("VIEW_DRIVER_LOCATION")]
         public async Task<ActionResult> GetAllLocations()
         {
-            var locations =
-                await _context.DriverLocations
-                    .OrderByDescending(l =>
-                        l.RecordedAt)
-                    .Select(l => new
-                    {
-                        l.LocationId,
-                        l.DriverId,
-                        l.Latitude,
-                        l.Longitude,
-                        l.RecordedAt
-                    })
-                    .ToListAsync();
+            var locations = await _context.DriverLocations
+                .OrderByDescending(l => l.RecordedAt)
+                .Select(l => new
+                {
+                    l.LocationId,
+                    l.DriverId,
+                    l.Latitude,
+                    l.Longitude,
+                    l.TrackingSource,
+                    l.RecordedAt
+                })
+                .ToListAsync();
 
             return Ok(locations);
         }
 
-        // =========================================================
-        // GET: api/driverlocations/driver/1/latest
-        //
-        // Operations/Admin/Super Admin -> any driver
-        // Driver -> own location
-        // Passenger -> assigned active driver only
-        // =========================================================
         [HttpGet("driver/{driverId}/latest")]
-        public async Task<ActionResult>
-            GetLatestDriverLocation(int driverId)
+        public async Task<ActionResult> GetLatestDriverLocation(int driverId)
         {
-            var driverExists =
-                await _context.Drivers
-                    .AnyAsync(d =>
-                        d.DriverId == driverId);
+            var driverExists = await _context.Drivers
+                .AnyAsync(d => d.DriverId == driverId);
 
             if (!driverExists)
-            {
-                return NotFound(new
-                {
-                    message = "Driver not found."
-                });
-            }
+                return NotFound(new { message = "Driver not found." });
 
             if (!await CanViewDriverLocationAsync(driverId))
             {
                 return StatusCode(403, new
                 {
-                    message =
-                        "You do not have permission to view this driver's location."
+                    message = "You do not have permission to view this driver's location."
                 });
             }
 
-            var location =
-                await _context.DriverLocations
-                    .Where(l =>
-                        l.DriverId == driverId)
-                    .OrderByDescending(l =>
-                        l.RecordedAt)
-                    .Select(l => new
-                    {
-                        l.LocationId,
-                        l.DriverId,
-                        l.Latitude,
-                        l.Longitude,
-                        l.RecordedAt
-                    })
-                    .FirstOrDefaultAsync();
+            var location = await _context.DriverLocations
+                .Where(l => l.DriverId == driverId)
+                .OrderByDescending(l => l.RecordedAt)
+                .FirstOrDefaultAsync();
 
             if (location == null)
             {
                 return NotFound(new
                 {
-                    message =
-                        "Driver location not found."
+                    message = "Driver location not found.",
+                    connectionStatus = "OFFLINE",
+                    isOnline = false
                 });
             }
 
-            return Ok(location);
+            var source = NormalizeTrackingSource(location.TrackingSource);
+
+            return Ok(new
+            {
+                location.LocationId,
+                location.DriverId,
+                location.Latitude,
+                location.Longitude,
+                trackingSource = source,
+                location.RecordedAt,
+                tracking = BuildTrackingStatus(location.RecordedAt, source)
+            });
         }
 
-        // =========================================================
-        // GET: api/driverlocations/driver/1
-        //
-        // Location history is more sensitive.
-        //
-        // Operations/Admin/Super Admin -> any driver
-        // Driver -> own history
-        //
-        // Passenger is NOT allowed full location history.
-        // =========================================================
         [HttpGet("driver/{driverId}")]
-        public async Task<ActionResult>
-            GetDriverLocations(int driverId)
+        public async Task<ActionResult> GetDriverLocations(int driverId)
         {
             var currentUserId = GetCurrentUserId();
-
             if (currentUserId == null)
             {
                 return Unauthorized(new
                 {
-                    message =
-                        "Unable to identify logged-in user."
+                    message = "Unable to identify logged-in user."
                 });
             }
 
             var driver = await _context.Drivers
-                .FirstOrDefaultAsync(d =>
-                    d.DriverId == driverId);
+                .FirstOrDefaultAsync(d => d.DriverId == driverId);
 
             if (driver == null)
-            {
-                return NotFound(new
-                {
-                    message = "Driver not found."
-                });
-            }
+                return NotFound(new { message = "Driver not found." });
 
-            var hasViewPermission =
-                await HasPermissionAsync("VIEW_DRIVER_LOCATION");
-
-            var ownDriver =
-                User.IsInRole("DRIVER") &&
-                driver.UserId == currentUserId.Value;
+            var hasViewPermission = await HasPermissionAsync("VIEW_DRIVER_LOCATION");
+            var ownDriver = User.IsInRole("DRIVER") &&
+                            driver.UserId == currentUserId.Value;
 
             if (!hasViewPermission && !ownDriver)
             {
                 return StatusCode(403, new
                 {
-                    message =
-                        "You do not have permission to view this driver's location history."
+                    message = "You do not have permission to view this driver's location history."
                 });
             }
 
-            var locations =
-                await _context.DriverLocations
-                    .Where(l =>
-                        l.DriverId == driverId)
-                    .OrderByDescending(l =>
-                        l.RecordedAt)
-                    .Select(l => new
-                    {
-                        l.LocationId,
-                        l.DriverId,
-                        l.Latitude,
-                        l.Longitude,
-                        l.RecordedAt
-                    })
-                    .ToListAsync();
+            var locations = await _context.DriverLocations
+                .Where(l => l.DriverId == driverId)
+                .OrderByDescending(l => l.RecordedAt)
+                .Select(l => new
+                {
+                    l.LocationId,
+                    l.DriverId,
+                    l.Latitude,
+                    l.Longitude,
+                    l.TrackingSource,
+                    l.RecordedAt
+                })
+                .ToListAsync();
 
             return Ok(locations);
         }
 
-        // =========================================================
-        // POST: api/driverlocations
-        //
-        // DRIVER ONLY
-        //
-        // DriverId is NOT accepted from client.
-        // Driver is identified from JWT.
-        // =========================================================
         [HttpPost]
         [HasPermission("UPDATE_DRIVER_LOCATION")]
-        public async Task<ActionResult>
-            AddDriverLocation(
-                [FromBody] AddDriverLocationRequest request)
+        public async Task<ActionResult> AddDriverLocation(
+            [FromBody] AddDriverLocationRequest request)
         {
             var currentUserId = GetCurrentUserId();
-
             if (currentUserId == null)
             {
                 return Unauthorized(new
                 {
-                    message =
-                        "Unable to identify logged-in user."
+                    message = "Unable to identify logged-in user."
                 });
             }
 
-            var driver =
-                await GetCurrentDriverAsync();
-
+            var driver = await GetCurrentDriverAsync();
             if (driver == null)
             {
                 return NotFound(new
                 {
-                    message =
-                        "Driver profile not found for the logged-in user."
+                    message = "Driver profile not found for the logged-in user."
                 });
             }
 
-            // -----------------------------------------------------
-            // Driver must be approved
-            // -----------------------------------------------------
             if (driver.VerificationStatus != "APPROVED")
             {
                 return BadRequest(new
                 {
-                    message =
-                        "Only approved drivers can update location."
+                    message = "Only approved drivers can update location."
                 });
             }
 
-            // -----------------------------------------------------
-            // GPS must be enabled
-            // -----------------------------------------------------
             if (!driver.GpsEnabled)
             {
                 return BadRequest(new
                 {
-                    message =
-                        "GPS must be enabled before sending location."
+                    message = "Location sharing must be enabled before sending location."
                 });
             }
 
-            // -----------------------------------------------------
-            // Validate latitude
-            // -----------------------------------------------------
-            if (request.Latitude < -90 ||
-                request.Latitude > 90)
+            if (request.Latitude < -90 || request.Latitude > 90)
             {
                 return BadRequest(new
                 {
-                    message =
-                        "Latitude must be between -90 and 90."
+                    message = "Latitude must be between -90 and 90."
                 });
             }
 
-            // -----------------------------------------------------
-            // Validate longitude
-            // -----------------------------------------------------
-            if (request.Longitude < -180 ||
-                request.Longitude > 180)
+            if (request.Longitude < -180 || request.Longitude > 180)
             {
                 return BadRequest(new
                 {
-                    message =
-                        "Longitude must be between -180 and 180."
+                    message = "Longitude must be between -180 and 180."
                 });
             }
+
+            var trackingSource = NormalizeTrackingSource(request.TrackingSource);
 
             var location = new DriverLocation
             {
                 DriverId = driver.DriverId,
                 Latitude = request.Latitude,
                 Longitude = request.Longitude,
+                TrackingSource = trackingSource,
                 RecordedAt = DateTime.Now
             };
 
             _context.DriverLocations.Add(location);
-
             await _context.SaveChangesAsync();
 
             return Ok(new
             {
-                message =
-                    "Driver location updated successfully.",
-
+                message = "Driver location updated successfully.",
                 location = new
                 {
                     location.LocationId,
                     location.DriverId,
                     location.Latitude,
                     location.Longitude,
-                    location.RecordedAt
+                    location.TrackingSource,
+                    location.RecordedAt,
+                    tracking = BuildTrackingStatus(
+                        location.RecordedAt,
+                        location.TrackingSource)
                 }
             });
         }
 
-        // =========================================================
-        // GET: api/driverlocations/my-latest
-        //
-        // Driver can get own latest location without sending ID.
-        // =========================================================
         [HttpGet("my-latest")]
         [HasPermission("UPDATE_DRIVER_LOCATION")]
-        public async Task<ActionResult>
-            GetMyLatestLocation()
+        public async Task<ActionResult> GetMyLatestLocation()
         {
-            var driver =
-                await GetCurrentDriverAsync();
-
+            var driver = await GetCurrentDriverAsync();
             if (driver == null)
             {
                 return NotFound(new
                 {
-                    message =
-                        "Driver profile not found for the logged-in user."
+                    message = "Driver profile not found for the logged-in user."
                 });
             }
 
-            var location =
-                await _context.DriverLocations
-                    .Where(l =>
-                        l.DriverId ==
-                            driver.DriverId)
-                    .OrderByDescending(l =>
-                        l.RecordedAt)
-                    .Select(l => new
-                    {
-                        l.LocationId,
-                        l.DriverId,
-                        l.Latitude,
-                        l.Longitude,
-                        l.RecordedAt
-                    })
-                    .FirstOrDefaultAsync();
+            var location = await _context.DriverLocations
+                .Where(l => l.DriverId == driver.DriverId)
+                .OrderByDescending(l => l.RecordedAt)
+                .FirstOrDefaultAsync();
 
             if (location == null)
             {
                 return NotFound(new
                 {
-                    message =
-                        "No location has been recorded yet."
+                    message = "No location has been recorded yet.",
+                    connectionStatus = "OFFLINE",
+                    isOnline = false
                 });
             }
 
-            return Ok(location);
+            var source = NormalizeTrackingSource(location.TrackingSource);
+
+            return Ok(new
+            {
+                location.LocationId,
+                location.DriverId,
+                location.Latitude,
+                location.Longitude,
+                trackingSource = source,
+                location.RecordedAt,
+                tracking = BuildTrackingStatus(location.RecordedAt, source)
+            });
         }
     }
 
-    // =============================================================
-    // LOCATION DTO
-    // =============================================================
     public class AddDriverLocationRequest
     {
         public decimal Latitude { get; set; }
-
         public decimal Longitude { get; set; }
+        public string TrackingSource { get; set; } = "PHONE_MAP";
     }
 }

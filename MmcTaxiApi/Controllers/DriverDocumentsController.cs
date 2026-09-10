@@ -20,6 +20,7 @@ namespace MmcTaxiApi.Controllers
         {
             "DRIVING_LICENSE",
             "NIC",
+            "POLICE_REPORT",
             "VEHICLE_REGISTRATION",
             "OTHER"
         };
@@ -321,7 +322,7 @@ namespace MmcTaxiApi.Controllers
                 return BadRequest(new
                 {
                     message =
-                        "Invalid document type. Allowed types: DRIVING_LICENSE, NIC, VEHICLE_REGISTRATION, OTHER."
+                        "Invalid document type. Allowed types: DRIVING_LICENSE, NIC, POLICE_REPORT, VEHICLE_REGISTRATION, OTHER."
                 });
             }
 
@@ -856,6 +857,7 @@ namespace MmcTaxiApi.Controllers
             {
                 "DRIVING_LICENSE",
                 "NIC",
+                "POLICE_REPORT",
                 "VEHICLE_REGISTRATION"
             };
 

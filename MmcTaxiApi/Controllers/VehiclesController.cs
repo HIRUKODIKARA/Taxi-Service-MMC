@@ -121,6 +121,10 @@ namespace MmcTaxiApi.Controllers
                     v.DriverId,
                     v.VehicleTypeId,
                     v.RegistrationNumber,
+                    v.Make,
+                    v.Model,
+                    v.Color,
+                    v.ManufactureYear,
                     v.GpsAvailable,
                     v.OperationalStatus,
                     v.AccountStatus,
@@ -151,6 +155,10 @@ namespace MmcTaxiApi.Controllers
                     v.DriverId,
                     v.VehicleTypeId,
                     v.RegistrationNumber,
+                    v.Make,
+                    v.Model,
+                    v.Color,
+                    v.ManufactureYear,
                     v.GpsAvailable,
                     v.OperationalStatus,
                     v.AccountStatus,
@@ -207,6 +215,10 @@ namespace MmcTaxiApi.Controllers
                 vehicle.DriverId,
                 vehicle.VehicleTypeId,
                 vehicle.RegistrationNumber,
+                vehicle.Make,
+                vehicle.Model,
+                vehicle.Color,
+                vehicle.ManufactureYear,
                 vehicle.GpsAvailable,
                 vehicle.OperationalStatus,
                 vehicle.AccountStatus,
@@ -243,6 +255,10 @@ namespace MmcTaxiApi.Controllers
                     v.DriverId,
                     v.VehicleTypeId,
                     v.RegistrationNumber,
+                    v.Make,
+                    v.Model,
+                    v.Color,
+                    v.ManufactureYear,
                     v.GpsAvailable,
                     v.OperationalStatus,
                     v.AccountStatus,
@@ -285,6 +301,10 @@ namespace MmcTaxiApi.Controllers
                     v.DriverId,
                     v.VehicleTypeId,
                     v.RegistrationNumber,
+                    v.Make,
+                    v.Model,
+                    v.Color,
+                    v.ManufactureYear,
                     v.GpsAvailable,
                     v.OperationalStatus,
                     v.AccountStatus,
@@ -360,6 +380,33 @@ namespace MmcTaxiApi.Controllers
                 {
                     message =
                         "A vehicle with this registration number already exists."
+                });
+            }
+
+
+            if (request.ManufactureYear != null)
+            {
+                var currentYear = DateTime.Now.Year;
+
+                if (request.ManufactureYear < 1900 ||
+                    request.ManufactureYear > currentYear + 1)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"Manufacture year must be between 1900 and {currentYear + 1}."
+                    });
+                }
+            }
+
+            if ((request.Make?.Trim().Length ?? 0) > 100 ||
+                (request.Model?.Trim().Length ?? 0) > 100 ||
+                (request.Color?.Trim().Length ?? 0) > 50)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Make/Model cannot exceed 100 characters and Color cannot exceed 50 characters."
                 });
             }
 
@@ -439,6 +486,10 @@ namespace MmcTaxiApi.Controllers
                     request.VehicleTypeId,
                 RegistrationNumber =
                     registrationNumber,
+                Make = CleanOptional(request.Make, 100),
+                Model = CleanOptional(request.Model, 100),
+                Color = CleanOptional(request.Color, 50),
+                ManufactureYear = request.ManufactureYear,
                 GpsAvailable =
                     request.GpsAvailable,
                 OperationalStatus = "OFFLINE",
@@ -598,6 +649,33 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
+
+            if (request.ManufactureYear != null)
+            {
+                var currentYear = DateTime.Now.Year;
+
+                if (request.ManufactureYear < 1900 ||
+                    request.ManufactureYear > currentYear + 1)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"Manufacture year must be between 1900 and {currentYear + 1}."
+                    });
+                }
+            }
+
+            if ((request.Make?.Trim().Length ?? 0) > 100 ||
+                (request.Model?.Trim().Length ?? 0) > 100 ||
+                (request.Color?.Trim().Length ?? 0) > 50)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Make/Model cannot exceed 100 characters and Color cannot exceed 50 characters."
+                });
+            }
+
             var vehicleType =
                 await _context.VehicleTypes
                     .FirstOrDefaultAsync(v =>
@@ -679,6 +757,11 @@ namespace MmcTaxiApi.Controllers
 
             vehicle.RegistrationNumber =
                 registrationNumber;
+
+            vehicle.Make = CleanOptional(request.Make, 100);
+            vehicle.Model = CleanOptional(request.Model, 100);
+            vehicle.Color = CleanOptional(request.Color, 50);
+            vehicle.ManufactureYear = request.ManufactureYear;
 
             vehicle.GpsAvailable =
                 request.GpsAvailable;
@@ -1250,6 +1333,19 @@ namespace MmcTaxiApi.Controllers
                     vehicle.OperationalStatus
             });
         }
+
+        private static string? CleanOptional(string? value, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            var cleaned = value.Trim();
+            return cleaned.Length <= maxLength
+                ? cleaned
+                : cleaned[..maxLength];
+        }
     }
 
     // =============================================================
@@ -1265,6 +1361,14 @@ namespace MmcTaxiApi.Controllers
         public string RegistrationNumber { get; set; } =
             string.Empty;
 
+        public string? Make { get; set; }
+
+        public string? Model { get; set; }
+
+        public string? Color { get; set; }
+
+        public int? ManufactureYear { get; set; }
+
         public bool GpsAvailable { get; set; } = true;
     }
 
@@ -1276,6 +1380,14 @@ namespace MmcTaxiApi.Controllers
 
         public string RegistrationNumber { get; set; } =
             string.Empty;
+
+        public string? Make { get; set; }
+
+        public string? Model { get; set; }
+
+        public string? Color { get; set; }
+
+        public int? ManufactureYear { get; set; }
 
         public bool GpsAvailable { get; set; } = true;
     }

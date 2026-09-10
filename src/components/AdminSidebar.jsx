@@ -4,67 +4,25 @@ function AdminSidebar() {
   const navigate = useNavigate();
 
   const menuItems = [
-    {
-      name: "Dashboard",
-      icon: "🏠",
-      path: "/admin/dashboard",
-    },
-    {
-      name: "Users",
-      icon: "👥",
-      path: "/admin/users",
-    },
-    {
-      name: "Drivers",
-      icon: "🚕",
-      path: "/admin/drivers",
-    },
-    {
-      name: "Driver Verification",
-      icon: "✅",
-      path: "/admin/driver-verification",
-    },
-    {
-      name: "Vehicles",
-      icon: "🚗",
-      path: "/admin/vehicles",
-    },
-    {
-      name: "Vehicle Types",
-      icon: "🚘",
-      path: "/admin/vehicle-types",
-    },
-    {
-      name: "Bookings",
-      icon: "📋",
-      path: "/admin/bookings",
-    },
-    {
-      name: "Reports",
-      icon: "📊",
-      path: "/admin/reports",
-    },
-    {
-      name: "Activity Monitoring",
-      icon: "🕘",
-      path: "/admin/activity",
-    },
+    { name: "Dashboard", icon: "🏠", path: "/admin/dashboard" },
+    { name: "Users", icon: "👥", path: "/admin/users" },
+    { name: "Drivers", icon: "🚕", path: "/admin/drivers" },
+    { name: "Driver Verification", icon: "✅", path: "/admin/driver-verification" },
+    { name: "Vehicles", icon: "🚗", path: "/admin/vehicles" },
+    { name: "Vehicle Types", icon: "🚘", path: "/admin/vehicle-types" },
+    { name: "Taxi Operator Areas", icon: "🗺️", path: "/admin/taxi-operator-areas" },
+    { name: "Bookings", icon: "📋", path: "/admin/bookings" },
+    { name: "Reports", icon: "📊", path: "/admin/reports" },
+    { name: "Activity Monitoring", icon: "🕘", path: "/admin/activity" },
   ];
 
   const logout = () => {
-    [
-      "token",
-      "authToken",
-      "accessToken",
-      "user",
-    ].forEach((key) => {
+    ["token", "authToken", "accessToken", "user"].forEach((key) => {
       localStorage.removeItem(key);
       sessionStorage.removeItem(key);
     });
 
-    navigate("/login", {
-      replace: true,
-    });
+    navigate("/login", { replace: true });
   };
 
   return (
@@ -74,208 +32,148 @@ function AdminSidebar() {
           position: fixed;
           top: 0;
           left: 0;
-
           width: 285px;
           height: 100vh;
-
           background: #0b2946;
           color: white;
-
           display: flex;
           flex-direction: column;
-
           z-index: 5000;
-
           font-family: Arial, Helvetica, sans-serif;
-
           box-sizing: border-box;
         }
 
         .admin-sidebar-header {
           padding: 25px 22px;
-
-          border-bottom:
-            1px solid rgba(255,255,255,.12);
+          border-bottom: 1px solid rgba(255,255,255,.12);
         }
 
         .admin-brand {
           display: flex;
           align-items: center;
-
           gap: 12px;
         }
 
         .admin-brand-logo {
           width: 52px;
           height: 52px;
-
           background: white;
-
           border-radius: 9px;
-
           display: flex;
           align-items: center;
           justify-content: center;
-
           overflow: hidden;
-
           flex-shrink: 0;
         }
 
         .admin-brand-logo img {
           width: 100%;
           height: 100%;
-
           object-fit: contain;
-
           padding: 4px;
-
           box-sizing: border-box;
         }
 
         .admin-brand-text h2 {
           margin: 0;
-
           color: white;
-
           font-size: 21px;
           font-weight: 800;
         }
 
         .admin-brand-text p {
           margin: 5px 0 0;
-
           color: #f6c20d;
-
           font-size: 10px;
           font-weight: 700;
         }
 
         .admin-menu {
           flex: 1;
-
           padding: 20px 13px;
-
           overflow-y: auto;
         }
 
         .admin-menu-label {
           display: block;
-
           margin: 0 10px 12px;
-
           color: rgba(255,255,255,.45);
-
           font-size: 8px;
           font-weight: 800;
-
           letter-spacing: 1px;
         }
 
         .admin-nav {
           display: flex;
           align-items: center;
-
           gap: 11px;
-
           margin-bottom: 5px;
-
           padding: 12px 13px;
-
           border-radius: 7px;
-
           color: rgba(255,255,255,.82);
-
           text-decoration: none;
-
           font-size: 11px;
           font-weight: 650;
-
           transition: .2s;
         }
 
         .admin-nav:hover {
           background: rgba(255,255,255,.08);
-
           color: white;
         }
 
         .admin-nav.active {
           background: #f6c20d;
-
           color: #0b2946;
-
           font-weight: 800;
         }
 
         .admin-nav-icon {
           width: 22px;
-
           text-align: center;
-
           font-size: 14px;
         }
 
         .admin-sidebar-footer {
           padding: 16px;
-
-          border-top:
-            1px solid rgba(255,255,255,.12);
+          border-top: 1px solid rgba(255,255,255,.12);
         }
 
         .admin-account {
           margin-bottom: 10px;
-
           padding: 11px;
-
           background: rgba(255,255,255,.06);
-
           border-radius: 8px;
         }
 
         .admin-account strong {
           display: block;
-
           color: white;
-
           font-size: 10px;
         }
 
         .admin-account span {
           display: block;
-
           margin-top: 4px;
-
           color: rgba(255,255,255,.55);
-
           font-size: 8px;
         }
 
         .admin-logout {
           width: 100%;
-
           padding: 10px;
-
-          border:
-            1px solid rgba(255,255,255,.2);
-
+          border: 1px solid rgba(255,255,255,.2);
           background: transparent;
-
           color: white;
-
           border-radius: 7px;
-
           cursor: pointer;
-
           font-size: 10px;
           font-weight: 700;
         }
 
         .admin-logout:hover {
           background: #f6c20d;
-
           border-color: #f6c20d;
-
           color: #0b2946;
         }
 
@@ -287,11 +185,8 @@ function AdminSidebar() {
       `}</style>
 
       <aside className="admin-sidebar">
-
         <div className="admin-sidebar-header">
-
           <div className="admin-brand">
-
             <div className="admin-brand-logo">
               <img
                 src="/logo.png"
@@ -306,16 +201,11 @@ function AdminSidebar() {
               <h2>MMC Taxi</h2>
               <p>Admin Portal</p>
             </div>
-
           </div>
-
         </div>
 
         <nav className="admin-menu">
-
-          <span className="admin-menu-label">
-            ADMIN MENU
-          </span>
+          <span className="admin-menu-label">ADMIN MENU</span>
 
           {menuItems.map((item) => (
             <NavLink
@@ -325,18 +215,13 @@ function AdminSidebar() {
                 `admin-nav ${isActive ? "active" : ""}`
               }
             >
-              <span className="admin-nav-icon">
-                {item.icon}
-              </span>
-
+              <span className="admin-nav-icon">{item.icon}</span>
               {item.name}
             </NavLink>
           ))}
-
         </nav>
 
         <div className="admin-sidebar-footer">
-
           <div className="admin-account">
             <strong>MMC Administrator</strong>
             <span>Makumbura Multimodal Center</span>
@@ -349,9 +234,7 @@ function AdminSidebar() {
           >
             ↪ Logout
           </button>
-
         </div>
-
       </aside>
     </>
   );

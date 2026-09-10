@@ -262,8 +262,19 @@ namespace MmcTaxiApi.Controllers
             {
                 BookingId = 0,
 
+                TripDirection = string.IsNullOrWhiteSpace(request.TripDirection)
+                    ? null
+                    : request.TripDirection.Trim().ToUpperInvariant(),
+
+                OperationalAreaId = request.OperationalAreaId,
+
                 PickupLocation = request.PickupLocation.Trim(),
+                PickupLatitude = request.PickupLatitude,
+                PickupLongitude = request.PickupLongitude,
+
                 Destination = request.Destination.Trim(),
+                DestinationLatitude = request.DestinationLatitude,
+                DestinationLongitude = request.DestinationLongitude,
 
                 BookingDate = request.BookingDate,
                 BookingTime = request.BookingTime,
@@ -572,6 +583,7 @@ namespace MmcTaxiApi.Controllers
                         b.BookingStatus == "WAITING_FOR_DRIVER" ||
                         b.BookingStatus == "ACCEPTED" ||
                         b.BookingStatus == "DRIVER_ARRIVING" ||
+                        b.BookingStatus == "DRIVER_ARRIVED" ||
                         b.BookingStatus == "ON_RIDE"
                     ));
 
@@ -592,6 +604,7 @@ namespace MmcTaxiApi.Controllers
                         b.BookingStatus == "WAITING_FOR_DRIVER" ||
                         b.BookingStatus == "ACCEPTED" ||
                         b.BookingStatus == "DRIVER_ARRIVING" ||
+                        b.BookingStatus == "DRIVER_ARRIVED" ||
                         b.BookingStatus == "ON_RIDE"
                     ));
 
@@ -972,6 +985,101 @@ namespace MmcTaxiApi.Controllers
         }
 
         // =========================================================
+        // PUT: api/bookings/1/arrived
+        // Driver confirms arrival at the passenger pickup location.
+        // =========================================================
+        [HttpPut("{id}/arrived")]
+        [HasPermission("UPDATE_TRIP_STATUS")]
+        public async Task<IActionResult> DriverArrived(int id)
+        {
+            var booking = await _context.Bookings.FindAsync(id);
+
+            if (booking == null)
+            {
+                return NotFound(new
+                {
+                    message = "Booking not found."
+                });
+            }
+
+            var currentDriver = await GetCurrentDriverAsync();
+
+            if (currentDriver == null)
+            {
+                return NotFound(new
+                {
+                    message = "Driver profile not found."
+                });
+            }
+
+            if (booking.AssignedDriverId != currentDriver.DriverId)
+            {
+                return StatusCode(403, new
+                {
+                    message = "This booking is not assigned to the logged-in driver."
+                });
+            }
+
+            if (booking.BookingStatus != "DRIVER_ARRIVING")
+            {
+                return BadRequest(new
+                {
+                    message = "Driver must be in DRIVER_ARRIVING status before marking arrival."
+                });
+            }
+
+            var driverUserId = await GetAssignedDriverUserId(booking);
+            var oldStatus = booking.BookingStatus;
+
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                booking.BookingStatus = "DRIVER_ARRIVED";
+                booking.UpdatedAt = DateTime.Now;
+
+                AddBookingHistoryEntity(
+                    booking.BookingId,
+                    oldStatus,
+                    "DRIVER_ARRIVED",
+                    driverUserId,
+                    "Driver arrived at pickup location"
+                );
+
+                if (booking.PassengerId != null)
+                {
+                    AddNotificationEntity(
+                        booking.PassengerId.Value,
+                        "Driver Arrived",
+                        $"Your driver for booking #{booking.BookingId} has arrived at the pickup location.",
+                        "DRIVER"
+                    );
+                }
+
+                AddActivityLogEntity(
+                    driverUserId,
+                    "DRIVER_ARRIVED",
+                    $"Driver arrived at the pickup location for booking #{booking.BookingId}."
+                );
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    message = "Driver arrival confirmed successfully.",
+                    booking
+                });
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        // =========================================================
         // PUT: api/bookings/1/start
         // =========================================================
         [HttpPut("{id}/start")]
@@ -1003,12 +1111,12 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
-            if (booking.BookingStatus != "DRIVER_ARRIVING")
+            if (booking.BookingStatus != "DRIVER_ARRIVED")
             {
                 return BadRequest(new
                 {
                     message =
-                        "Driver must mark the booking as DRIVER_ARRIVING before starting the ride."
+                        "Driver must confirm DRIVER_ARRIVED before starting the ride."
                 });
             }
 
@@ -1315,10 +1423,35 @@ namespace MmcTaxiApi.Controllers
 
     public class CreateBookingRequest
     {
-        // Website passenger booking fields
+        // =========================================================
+        // JOURNEY / LOCATION DETAILS
+        // =========================================================
+
         public string PickupLocation { get; set; } = string.Empty;
 
         public string Destination { get; set; } = string.Empty;
+
+        // Expected values:
+        // MMC_TO_OTHER
+        // OTHER_TO_MMC
+        public string? TripDirection { get; set; }
+
+        // Mainly used for OTHER_TO_MMC bookings.
+        public int? OperationalAreaId { get; set; }
+
+        // Exact pickup location selected from map.
+        public decimal? PickupLatitude { get; set; }
+
+        public decimal? PickupLongitude { get; set; }
+
+        // Exact destination selected from map.
+        public decimal? DestinationLatitude { get; set; }
+
+        public decimal? DestinationLongitude { get; set; }
+
+        // =========================================================
+        // BOOKING DATE / TIME / VEHICLE
+        // =========================================================
 
         public DateTime? BookingDate { get; set; }
 
@@ -1326,8 +1459,10 @@ namespace MmcTaxiApi.Controllers
 
         public int VehicleTypeId { get; set; }
 
-        // Optional fields used by Taxi Operator / Admin for
-        // PHONE / ON_SITE bookings.
+        // =========================================================
+        // OPTIONAL TAXI OPERATOR / ADMIN BOOKING DETAILS
+        // =========================================================
+
         public int? PassengerId { get; set; }
 
         public string? PassengerName { get; set; }

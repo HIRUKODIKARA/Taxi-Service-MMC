@@ -17,6 +17,14 @@ function DriverTrips() {
 
   const [message, setMessage] = useState("");
 
+  // PHONE_MAP is the current tracking method.
+  // GPS_DEVICE remains available for future hardware integration.
+  const [trackingSource, setTrackingSource] = useState("PHONE_MAP");
+  const [locationSharing, setLocationSharing] = useState(false);
+  const [locationStatus, setLocationStatus] = useState("OFFLINE");
+  const [lastLocationUpdate, setLastLocationUpdate] = useState(null);
+  const [locationWatchId, setLocationWatchId] = useState(null);
+
   const [selectedTrip, setSelectedTrip] =
     useState(null);
 
@@ -173,6 +181,7 @@ function DriverTrips() {
               [
                 "ACCEPTED",
                 "DRIVER_ARRIVING",
+                "DRIVER_ARRIVED",
                 "ON_RIDE",
                 "COMPLETED",
               ].includes(
@@ -259,6 +268,11 @@ function DriverTrips() {
             `Booking #${bookingId}: Driver Arriving status updated.`;
         }
 
+        if (action === "arrived") {
+          successText =
+            `Booking #${bookingId}: Arrival confirmed. Passenger has been notified.`;
+        }
+
         if (action === "start") {
           successText =
             `Booking #${bookingId}: Trip started successfully.`;
@@ -293,6 +307,153 @@ function DriverTrips() {
       }
     };
 
+  // =========================================================
+  // PHONE / MAP LOCATION TRACKING
+  // =========================================================
+  const sendPhoneLocation = async (position) => {
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/driverlocations`,
+        {
+          method: "POST",
+          headers: getHeaders(),
+          body: JSON.stringify({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            trackingSource: "PHONE_MAP",
+          }),
+        }
+      );
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.message || "Unable to update driver location."
+        );
+      }
+
+      setLocationStatus(
+        data?.location?.tracking?.connectionStatus || "LIVE"
+      );
+      setLastLocationUpdate(new Date());
+      setError("");
+    } catch (err) {
+      console.error("Location update error:", err);
+      setLocationStatus("OFFLINE");
+      setError(
+        err.message || "Unable to share your current location."
+      );
+    }
+  };
+
+  const startPhoneTracking = () => {
+    setError("");
+    setMessage("");
+
+    if (!navigator.geolocation) {
+      setError(
+        "Location service is not supported by this browser."
+      );
+      return;
+    }
+
+    if (locationWatchId !== null) {
+      setLocationSharing(true);
+      return;
+    }
+
+    const watchId = navigator.geolocation.watchPosition(
+      (position) => {
+        setLocationSharing(true);
+        setLocationStatus("LIVE");
+        sendPhoneLocation(position);
+      },
+      (geoError) => {
+        console.error("Browser location error:", geoError);
+        setLocationSharing(false);
+        setLocationStatus("OFFLINE");
+
+        if (geoError.code === 1) {
+          setError(
+            "Location permission was denied. Please allow Location access on the phone/browser."
+          );
+        } else if (geoError.code === 2) {
+          setError(
+            "Your current location is unavailable. Check phone Location/GPS settings."
+          );
+        } else {
+          setError(
+            "Location request timed out. Please try again."
+          );
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5000,
+        timeout: 15000,
+      }
+    );
+
+    setLocationWatchId(watchId);
+    setLocationSharing(true);
+    setTrackingSource("PHONE_MAP");
+    setMessage(
+      "Phone / Map tracking started. Keep location permission and internet connection enabled."
+    );
+  };
+
+  const stopPhoneTracking = () => {
+    if (
+      locationWatchId !== null &&
+      navigator.geolocation
+    ) {
+      navigator.geolocation.clearWatch(locationWatchId);
+    }
+
+    setLocationWatchId(null);
+    setLocationSharing(false);
+    setLocationStatus("OFFLINE");
+    setMessage(
+      "Phone / Map tracking stopped. Passengers will see the last known location until tracking starts again."
+    );
+  };
+
+  const openGoogleMapsNavigation = (trip) => {
+    if (!trip?.pickupLocation) {
+      setError("Pickup location is not available.");
+      return;
+    }
+
+    const destination =
+      trip.bookingStatus === "ON_RIDE"
+        ? trip.destination
+        : trip.pickupLocation;
+
+    const googleMapsUrl =
+      `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+        destination
+      )}&travelmode=driving`;
+
+    window.open(
+      googleMapsUrl,
+      "_blank",
+      "noopener,noreferrer"
+    );
+  };
+
+  // Stop browser location watcher when leaving this page.
+  useEffect(() => {
+    return () => {
+      if (
+        locationWatchId !== null &&
+        navigator.geolocation
+      ) {
+        navigator.geolocation.clearWatch(locationWatchId);
+      }
+    };
+  }, [locationWatchId]);
+
   const filteredTrips =
     filter === "All"
       ? trips
@@ -321,6 +482,9 @@ function DriverTrips() {
 
         case "DRIVER_ARRIVING":
           return "arriving";
+
+        case "DRIVER_ARRIVED":
+          return "arrived";
 
         case "ON_RIDE":
           return "onride";
@@ -365,6 +529,33 @@ function DriverTrips() {
       if (
         trip.bookingStatus ===
         "DRIVER_ARRIVING"
+      ) {
+        return (
+          <button
+            type="button"
+            className="trip-action-btn arrived"
+            disabled={
+              actionLoadingId ===
+              trip.bookingId
+            }
+            onClick={() =>
+              updateTripStatus(
+                trip.bookingId,
+                "arrived"
+              )
+            }
+          >
+            {actionLoadingId ===
+            trip.bookingId
+              ? "Updating..."
+              : "I Have Arrived"}
+          </button>
+        );
+      }
+
+      if (
+        trip.bookingStatus ===
+        "DRIVER_ARRIVED"
       ) {
         return (
           <button
@@ -571,6 +762,11 @@ function DriverTrips() {
           color: #806400;
         }
 
+        .driver-trip-status.arrived {
+          background: #e8f5e9;
+          color: #18763a;
+        }
+
         .driver-trip-status.onride {
           background: #e3effc;
           color: #24649f;
@@ -714,6 +910,11 @@ function DriverTrips() {
           color: #0b2946;
         }
 
+        .trip-action-btn.arrived {
+          background: #21a453;
+          color: white;
+        }
+
         .trip-action-btn.start {
           background: #24649f;
           color: white;
@@ -734,13 +935,133 @@ function DriverTrips() {
           font-weight: 700;
         }
 
+        .driver-tracking-panel {
+          margin-bottom: 20px;
+          padding: 18px;
+          background: white;
+          border: 1px solid #e2e7ec;
+          border-radius: 10px;
+        }
+
+        .driver-tracking-top {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 15px;
+          margin-bottom: 14px;
+        }
+
+        .driver-tracking-top h2 {
+          margin: 0 0 4px;
+          color: #0b2946;
+          font-size: 16px;
+        }
+
+        .driver-tracking-top p {
+          margin: 0;
+          color: #7b8794;
+          font-size: 9px;
+        }
+
+        .driver-location-badge {
+          padding: 6px 10px;
+          border-radius: 20px;
+          font-size: 9px;
+          font-weight: 800;
+        }
+
+        .driver-location-badge.live {
+          background: #e3f6e7;
+          color: #18763a;
+        }
+
+        .driver-location-badge.offline {
+          background: #fde8e8;
+          color: #a43c3c;
+        }
+
+        .driver-tracking-options {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 12px;
+        }
+
+        .driver-tracking-option {
+          padding: 14px;
+          border: 1px solid #e2e7ec;
+          border-radius: 8px;
+          background: #f8fafc;
+        }
+
+        .driver-tracking-option.active {
+          border-color: #f6c20d;
+          background: #fffbea;
+        }
+
+        .driver-tracking-option h3 {
+          margin: 0 0 5px;
+          color: #0b2946;
+          font-size: 11px;
+        }
+
+        .driver-tracking-option p {
+          margin: 0 0 10px;
+          color: #7b8794;
+          font-size: 9px;
+          line-height: 1.5;
+        }
+
+        .driver-track-btn {
+          border: none;
+          border-radius: 6px;
+          padding: 9px 12px;
+          background: #0b2946;
+          color: white;
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .driver-track-btn.stop {
+          background: #a43c3c;
+        }
+
+        .driver-track-btn:disabled {
+          opacity: 0.55;
+          cursor: not-allowed;
+        }
+
+        .driver-last-update {
+          margin-top: 10px;
+          color: #7b8794;
+          font-size: 9px;
+        }
+
+        .google-nav-btn {
+          width: 100%;
+          margin-bottom: 9px;
+          border: 1px solid #0b2946;
+          border-radius: 6px;
+          padding: 10px;
+          background: white;
+          color: #0b2946;
+          font-size: 9px;
+          font-weight: 800;
+          cursor: pointer;
+        }
+
+        .google-nav-btn:hover {
+          background: #f4f7fa;
+        }
+
         @media(max-width: 700px) {
           .driver-trips-page {
             padding: 18px;
           }
 
           .driver-trip-summary,
-          .trip-detail-grid {
+          .trip-detail-grid,
+          .driver-tracking-options {
             grid-template-columns: 1fr;
           }
 
@@ -770,6 +1091,78 @@ function DriverTrips() {
             {message}
           </div>
         )}
+
+        <section className="driver-tracking-panel">
+          <div className="driver-tracking-top">
+            <div>
+              <h2>Driver Location Tracking</h2>
+              <p>
+                Use phone/map tracking now. GPS device tracking is kept ready for future integration.
+              </p>
+            </div>
+
+            <span
+              className={`driver-location-badge ${
+                locationStatus === "LIVE" ? "live" : "offline"
+              }`}
+            >
+              {locationStatus === "LIVE" ? "● LIVE" : "● OFFLINE"}
+            </span>
+          </div>
+
+          <div className="driver-tracking-options">
+            <div
+              className={`driver-tracking-option ${
+                trackingSource === "PHONE_MAP" ? "active" : ""
+              }`}
+            >
+              <h3>📱 Phone / Map Tracking</h3>
+              <p>
+                Uses this phone's location service and sends live coordinates to the MMC system.
+              </p>
+
+              {!locationSharing ? (
+                <button
+                  type="button"
+                  className="driver-track-btn"
+                  onClick={startPhoneTracking}
+                >
+                  Start Phone Tracking
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="driver-track-btn stop"
+                  onClick={stopPhoneTracking}
+                >
+                  Stop Tracking
+                </button>
+              )}
+
+              <div className="driver-last-update">
+                Last update:{" "}
+                {lastLocationUpdate
+                  ? lastLocationUpdate.toLocaleTimeString()
+                  : "No location sent yet"}
+              </div>
+            </div>
+
+            <div className="driver-tracking-option">
+              <h3>📡 GPS Device Tracking</h3>
+              <p>
+                Reserved for a future external GPS device. Existing phone/map tracking continues to work now.
+              </p>
+
+              <button
+                type="button"
+                className="driver-track-btn"
+                disabled
+              >
+                Future GPS Option
+              </button>
+            </div>
+          </div>
+        </section>
 
         <div className="driver-trip-summary">
           <div className="driver-trip-summary-card">
@@ -1056,6 +1449,20 @@ function DriverTrips() {
               </div>
 
               <div className="trip-action-area">
+                {selectedTrip.bookingStatus !== "COMPLETED" && (
+                  <button
+                    type="button"
+                    className="google-nav-btn"
+                    onClick={() =>
+                      openGoogleMapsNavigation(selectedTrip)
+                    }
+                  >
+                    {selectedTrip.bookingStatus === "ON_RIDE"
+                      ? "Open Destination in Google Maps"
+                      : "Navigate to Passenger Pickup"}
+                  </button>
+                )}
+
                 {getActionButton(
                   selectedTrip
                 )}

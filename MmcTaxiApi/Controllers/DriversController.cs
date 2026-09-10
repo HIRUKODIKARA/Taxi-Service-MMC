@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MmcTaxiApi.Authorization;
@@ -14,17 +15,22 @@ namespace MmcTaxiApi.Controllers
     public class DriversController : ControllerBase
     {
         private readonly ApplicationDbContext _context;
+        private readonly IWebHostEnvironment _environment;
 
         private static readonly string[] RequiredDocumentTypes =
         {
             "DRIVING_LICENSE",
             "NIC",
+            "POLICE_REPORT",
             "VEHICLE_REGISTRATION"
         };
 
-        public DriversController(ApplicationDbContext context)
+        public DriversController(
+            ApplicationDbContext context,
+            IWebHostEnvironment environment)
         {
             _context = context;
+            _environment = environment;
         }
 
         // =========================================================
@@ -107,6 +113,9 @@ namespace MmcTaxiApi.Controllers
                     d.DriverId,
                     d.UserId,
                     d.DrivingLicenseNo,
+                    d.Address,
+                    d.DateOfBirth,
+                    d.DrivingLicenseExpiry,
                     d.VerificationStatus,
                     d.OperationalStatus,
                     d.GpsEnabled,
@@ -143,6 +152,9 @@ namespace MmcTaxiApi.Controllers
                     d.DriverId,
                     d.UserId,
                     d.DrivingLicenseNo,
+                    d.Address,
+                    d.DateOfBirth,
+                    d.DrivingLicenseExpiry,
                     d.VerificationStatus,
                     d.OperationalStatus,
                     d.GpsEnabled,
@@ -200,6 +212,9 @@ namespace MmcTaxiApi.Controllers
                 driver.DriverId,
                 driver.UserId,
                 driver.DrivingLicenseNo,
+                driver.Address,
+                driver.DateOfBirth,
+                driver.DrivingLicenseExpiry,
                 driver.VerificationStatus,
                 driver.OperationalStatus,
                 driver.GpsEnabled,
@@ -259,6 +274,9 @@ namespace MmcTaxiApi.Controllers
                 driver.DriverId,
                 driver.UserId,
                 driver.DrivingLicenseNo,
+                driver.Address,
+                driver.DateOfBirth,
+                driver.DrivingLicenseExpiry,
                 driver.VerificationStatus,
                 driver.OperationalStatus,
                 driver.GpsEnabled,
@@ -348,6 +366,810 @@ namespace MmcTaxiApi.Controllers
                 allRequiredDocumentsApproved = allApproved,
                 documents = documentStatus
             });
+        }
+
+        // =========================================================
+        // POST: api/drivers/public-register
+        //
+        // Public self-registration.
+        // Creates User + DRIVER role + Driver + Vehicle + Documents + Photos.
+        // Everything remains PENDING until Admin/Super Admin verification.
+        // =========================================================
+        [AllowAnonymous]
+        [HttpPost("public-register")]
+        [RequestSizeLimit(40 * 1024 * 1024)]
+        public async Task<ActionResult> PublicRegisterDriver(
+            [FromForm] PublicDriverRegistrationRequest request)
+        {
+            var savedFiles = new List<string>();
+
+            try
+            {
+                if (string.IsNullOrWhiteSpace(request.FullName))
+                    return BadRequest(new { message = "Full name is required." });
+
+                if (string.IsNullOrWhiteSpace(request.Email))
+                    return BadRequest(new { message = "Email is required." });
+
+                if (string.IsNullOrWhiteSpace(request.Phone))
+                    return BadRequest(new { message = "Phone number is required." });
+
+                if (string.IsNullOrWhiteSpace(request.Nic))
+                    return BadRequest(new { message = "NIC is required." });
+
+                if (string.IsNullOrWhiteSpace(request.Address))
+                    return BadRequest(new { message = "Address is required." });
+
+                if (request.DateOfBirth == null)
+                    return BadRequest(new { message = "Date of birth is required." });
+
+                if (request.DateOfBirth.Value.Date >= DateTime.Today)
+                    return BadRequest(new { message = "Date of birth must be a past date." });
+
+                if (string.IsNullOrWhiteSpace(request.Password))
+                    return BadRequest(new { message = "Password is required." });
+
+                if (request.Password != request.ConfirmPassword)
+                    return BadRequest(new
+                    {
+                        message = "Password and confirm password do not match."
+                    });
+
+                if (request.Password.Length < 8 ||
+                    request.Password.Length > 100 ||
+                    !request.Password.Any(char.IsUpper) ||
+                    !request.Password.Any(char.IsLower) ||
+                    !request.Password.Any(char.IsDigit))
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "Password must be 8-100 characters and contain uppercase, lowercase and number."
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.DrivingLicenseNo))
+                    return BadRequest(new
+                    {
+                        message = "Driving licence number is required."
+                    });
+
+                if (request.DrivingLicenseExpiry == null ||
+                    request.DrivingLicenseExpiry.Value.Date <= DateTime.Today)
+                {
+                    return BadRequest(new
+                    {
+                        message = "A valid future driving licence expiry date is required."
+                    });
+                }
+
+                if (request.VehicleTypeId <= 0)
+                    return BadRequest(new { message = "Vehicle type is required." });
+
+                if (string.IsNullOrWhiteSpace(request.RegistrationNumber))
+                    return BadRequest(new
+                    {
+                        message = "Vehicle registration number is required."
+                    });
+
+                if (string.IsNullOrWhiteSpace(request.Make) ||
+                    string.IsNullOrWhiteSpace(request.Model) ||
+                    string.IsNullOrWhiteSpace(request.Color) ||
+                    request.ManufactureYear == null)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            "Vehicle Make, Model, Color and Manufacture Year are required."
+                    });
+                }
+
+                var currentYear = DateTime.Now.Year;
+                if (request.ManufactureYear < 1900 ||
+                    request.ManufactureYear > currentYear + 1)
+                {
+                    return BadRequest(new
+                    {
+                        message =
+                            $"Manufacture year must be between 1900 and {currentYear + 1}."
+                    });
+                }
+
+                var requiredDocuments = new Dictionary<string, IFormFile?>
+                {
+                    ["NIC"] = request.NicDocument,
+                    ["DRIVING_LICENSE"] = request.DrivingLicenseDocument,
+                    ["POLICE_REPORT"] = request.PoliceReportDocument,
+                    ["VEHICLE_REGISTRATION"] = request.VehicleRegistrationDocument
+                };
+
+                foreach (var item in requiredDocuments)
+                {
+                    var validation = ValidateDocumentFile(item.Value);
+                    if (validation != null)
+                        return BadRequest(new
+                        {
+                            message = $"{item.Key}: {validation}"
+                        });
+                }
+
+                var requiredPhotos = new Dictionary<string, IFormFile?>
+                {
+                    ["FRONT"] = request.FrontPhoto,
+                    ["REAR"] = request.RearPhoto,
+                    ["SIDE"] = request.SidePhoto
+                };
+
+                foreach (var item in requiredPhotos)
+                {
+                    var validation = ValidateVehiclePhotoFile(item.Value);
+                    if (validation != null)
+                        return BadRequest(new
+                        {
+                            message = $"{item.Key} photo: {validation}"
+                        });
+                }
+
+                if (request.OtherPhoto != null &&
+                    request.OtherPhoto.Length > 0)
+                {
+                    var otherValidation =
+                        ValidateVehiclePhotoFile(request.OtherPhoto);
+
+                    if (otherValidation != null)
+                        return BadRequest(new
+                        {
+                            message = $"OTHER photo: {otherValidation}"
+                        });
+                }
+
+                var email = request.Email.Trim().ToLowerInvariant();
+                var phone = request.Phone.Trim();
+                var nic = request.Nic.Trim().ToUpperInvariant();
+                var licence =
+                    request.DrivingLicenseNo.Trim().ToUpperInvariant();
+                var registration =
+                    request.RegistrationNumber.Trim().ToUpperInvariant();
+
+                if (await _context.Users.AnyAsync(u =>
+                        u.Email.ToLower() == email))
+                    return BadRequest(new
+                    {
+                        message = "This email address is already registered."
+                    });
+
+                if (await _context.Users.AnyAsync(u => u.Phone == phone))
+                    return BadRequest(new
+                    {
+                        message = "This phone number is already registered."
+                    });
+
+                if (await _context.Users.AnyAsync(u =>
+                        u.Nic != null &&
+                        u.Nic.ToUpper() == nic))
+                    return BadRequest(new
+                    {
+                        message = "This NIC is already registered."
+                    });
+
+                if (await _context.Drivers.AnyAsync(d =>
+                        d.DrivingLicenseNo == licence))
+                    return BadRequest(new
+                    {
+                        message = "Driving licence number already exists."
+                    });
+
+                if (await _context.Vehicles.AnyAsync(v =>
+                        v.RegistrationNumber == registration))
+                    return BadRequest(new
+                    {
+                        message = "Vehicle registration number already exists."
+                    });
+
+                var driverRole = await _context.Roles
+                    .FirstOrDefaultAsync(r => r.RoleName == "DRIVER");
+
+                if (driverRole == null)
+                    return BadRequest(new
+                    {
+                        message = "DRIVER role is not configured in the database."
+                    });
+
+                var vehicleType = await _context.VehicleTypes
+                    .FirstOrDefaultAsync(vt =>
+                        vt.VehicleTypeId == request.VehicleTypeId);
+
+                if (vehicleType == null ||
+                    vehicleType.Status != "ACTIVE")
+                {
+                    return BadRequest(new
+                    {
+                        message = "Selected vehicle type is not available."
+                    });
+                }
+
+                await using var transaction =
+                    await _context.Database.BeginTransactionAsync();
+
+                try
+                {
+                    var user = new User
+                    {
+                        FullName = request.FullName.Trim(),
+                        Email = email,
+                        Phone = phone,
+                        Nic = nic,
+                        AccountStatus = "ACTIVE",
+                        CreatedAt = DateTime.Now,
+                        UpdatedAt = DateTime.Now
+                    };
+
+                    var passwordHasher = new PasswordHasher<User>();
+                    user.PasswordHash =
+                        passwordHasher.HashPassword(user, request.Password);
+
+                    _context.Users.Add(user);
+                    await _context.SaveChangesAsync();
+
+                    _context.UserRoles.Add(new UserRole
+                    {
+                        UserId = user.UserId,
+                        RoleId = driverRole.RoleId
+                    });
+
+                    var driver = new Driver
+                    {
+                        UserId = user.UserId,
+                        DrivingLicenseNo = licence,
+                        Address = request.Address.Trim(),
+                        DateOfBirth = request.DateOfBirth,
+                        DrivingLicenseExpiry =
+                            request.DrivingLicenseExpiry,
+                        VerificationStatus = "PENDING",
+                        OperationalStatus = "OFFLINE",
+                        GpsEnabled = false,
+                        VerifiedAt = null,
+                        CreatedAt = DateTime.Now
+                    };
+
+                    _context.Drivers.Add(driver);
+                    await _context.SaveChangesAsync();
+
+                    var vehicle = new Vehicle
+                    {
+                        DriverId = driver.DriverId,
+                        VehicleTypeId = request.VehicleTypeId,
+                        RegistrationNumber = registration,
+                        Make = CleanOptional(request.Make, 100),
+                        Model = CleanOptional(request.Model, 100),
+                        Color = CleanOptional(request.Color, 50),
+                        ManufactureYear = request.ManufactureYear,
+                        GpsAvailable = request.GpsAvailable,
+                        OperationalStatus = "OFFLINE",
+                        AccountStatus = "ACTIVE",
+                        CreatedAt = DateTime.Now
+                    };
+
+                    _context.Vehicles.Add(vehicle);
+                    await _context.SaveChangesAsync();
+
+                    foreach (var item in requiredDocuments)
+                    {
+                        var relativePath = await SavePublicUploadAsync(
+                            item.Value!,
+                            "DriverDocuments",
+                            driver.DriverId.ToString());
+
+                        savedFiles.Add(relativePath);
+
+                        _context.DriverDocuments.Add(
+                            new DriverDocument
+                            {
+                                DriverId = driver.DriverId,
+                                DocumentType = item.Key,
+                                FilePath = relativePath,
+                                VerificationStatus = "PENDING",
+                                UploadedAt = DateTime.Now
+                            });
+                    }
+
+                    foreach (var item in requiredPhotos)
+                    {
+                        var relativePath = await SavePublicUploadAsync(
+                            item.Value!,
+                            "VehiclePhotos",
+                            vehicle.VehicleId.ToString());
+
+                        savedFiles.Add(relativePath);
+
+                        _context.VehiclePhotos.Add(
+                            new VehiclePhoto
+                            {
+                                VehicleId = vehicle.VehicleId,
+                                PhotoType = item.Key,
+                                FilePath = relativePath,
+                                UploadedAt = DateTime.Now
+                            });
+                    }
+
+                    if (request.OtherPhoto != null &&
+                        request.OtherPhoto.Length > 0)
+                    {
+                        var relativePath = await SavePublicUploadAsync(
+                            request.OtherPhoto,
+                            "VehiclePhotos",
+                            vehicle.VehicleId.ToString());
+
+                        savedFiles.Add(relativePath);
+
+                        _context.VehiclePhotos.Add(
+                            new VehiclePhoto
+                            {
+                                VehicleId = vehicle.VehicleId,
+                                PhotoType = "OTHER",
+                                FilePath = relativePath,
+                                UploadedAt = DateTime.Now
+                            });
+                    }
+
+                    _context.Notifications.Add(
+                        new Notification
+                        {
+                            UserId = user.UserId,
+                            Title = "Driver Registration Submitted",
+                            Message =
+                                "Your driver registration was submitted successfully and is pending verification.",
+                            NotificationType = "DRIVER",
+                            IsRead = false,
+                            CreatedAt = DateTime.Now
+                        });
+
+                    _context.ActivityLogs.Add(
+                        new ActivityLog
+                        {
+                            UserId = user.UserId,
+                            ActivityType =
+                                "PUBLIC_DRIVER_REGISTRATION_SUBMITTED",
+                            Description =
+                                $"Driver self-registration submitted for '{user.Email}' with vehicle '{registration}'.",
+                            CreatedAt = DateTime.Now
+                        });
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return Ok(new
+                    {
+                        message =
+                            "Driver registration submitted successfully. Your account is pending verification.",
+                        driverId = driver.DriverId,
+                        vehicleId = vehicle.VehicleId,
+                        verificationStatus =
+                            driver.VerificationStatus
+                    });
+                }
+                catch (Exception ex)
+                {
+                    await transaction.RollbackAsync();
+
+                    foreach (var relativePath in savedFiles)
+                    {
+                        DeleteUploadedFile(relativePath);
+                    }
+
+                    return StatusCode(500, new
+                    {
+                        message =
+                            "An error occurred while submitting driver registration.",
+                        detail =
+                            ex.InnerException?.Message ?? ex.Message
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                foreach (var relativePath in savedFiles)
+                {
+                    DeleteUploadedFile(relativePath);
+                }
+
+                return StatusCode(500, new
+                {
+                    message =
+                        "An unexpected error occurred during driver registration.",
+                    detail =
+                        ex.InnerException?.Message ?? ex.Message
+                });
+            }
+        }
+
+        private static string? ValidateDocumentFile(IFormFile? file)
+        {
+            if (file == null || file.Length == 0)
+                return "File is required.";
+
+            if (file.Length > 5 * 1024 * 1024)
+                return "Maximum file size is 5 MB.";
+
+            var extension =
+                Path.GetExtension(file.FileName).ToLowerInvariant();
+
+            var allowedExtensions =
+                new[] { ".jpg", ".jpeg", ".png", ".pdf" };
+
+            if (!allowedExtensions.Contains(extension))
+                return "Only JPG, JPEG, PNG and PDF files are allowed.";
+
+            var allowedMimeTypes =
+                new[] { "image/jpeg", "image/png", "application/pdf" };
+
+            if (string.IsNullOrWhiteSpace(file.ContentType) ||
+                !allowedMimeTypes.Contains(
+                    file.ContentType.ToLowerInvariant()))
+            {
+                return "Invalid document content type.";
+            }
+
+            return null;
+        }
+
+        private static string? ValidateVehiclePhotoFile(IFormFile? file)
+        {
+            if (file == null || file.Length == 0)
+                return "File is required.";
+
+            if (file.Length > 5 * 1024 * 1024)
+                return "Maximum file size is 5 MB.";
+
+            var extension =
+                Path.GetExtension(file.FileName).ToLowerInvariant();
+
+            if (!new[] { ".jpg", ".jpeg", ".png" }
+                .Contains(extension))
+            {
+                return "Only JPG, JPEG and PNG files are allowed.";
+            }
+
+            if (string.IsNullOrWhiteSpace(file.ContentType) ||
+                !new[] { "image/jpeg", "image/png" }
+                    .Contains(file.ContentType.ToLowerInvariant()))
+            {
+                return "Invalid image content type.";
+            }
+
+            return null;
+        }
+
+        private async Task<string> SavePublicUploadAsync(
+            IFormFile file,
+            string category,
+            string ownerId)
+        {
+            var extension =
+                Path.GetExtension(file.FileName).ToLowerInvariant();
+
+            var folder = Path.Combine(
+                _environment.ContentRootPath,
+                "Uploads",
+                category,
+                ownerId);
+
+            Directory.CreateDirectory(folder);
+
+            var safeFileName = $"{Guid.NewGuid():N}{extension}";
+            var fullPath = Path.Combine(folder, safeFileName);
+
+            await using (var stream =
+                new FileStream(fullPath, FileMode.CreateNew))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            return Path.Combine(
+                    "Uploads",
+                    category,
+                    ownerId,
+                    safeFileName)
+                .Replace("\\", "/");
+        }
+
+        private void DeleteUploadedFile(string relativePath)
+        {
+            try
+            {
+                var normalized =
+                    relativePath.Replace(
+                        "/",
+                        Path.DirectorySeparatorChar.ToString());
+
+                var fullPath =
+                    Path.GetFullPath(
+                        Path.Combine(
+                            _environment.ContentRootPath,
+                            normalized));
+
+                var uploadsRoot =
+                    Path.GetFullPath(
+                        Path.Combine(
+                            _environment.ContentRootPath,
+                            "Uploads"));
+
+                if (fullPath.StartsWith(
+                        uploadsRoot,
+                        StringComparison.OrdinalIgnoreCase) &&
+                    System.IO.File.Exists(fullPath))
+                {
+                    System.IO.File.Delete(fullPath);
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        // =========================================================
+        // POST: api/drivers/register
+        //
+        // Admin / Super Admin complete driver registration.
+        // Creates User + DRIVER role + Driver + Vehicle atomically.
+        // Documents and vehicle photos are uploaded after this call.
+        // =========================================================
+        [HttpPost("register")]
+        [HasPermission("MANAGE_DRIVERS")]
+        public async Task<ActionResult> RegisterDriver(
+            [FromBody] RegisterDriverRequest request)
+        {
+            var currentUserId = GetCurrentUserId();
+
+            if (currentUserId == null)
+            {
+                return Unauthorized(new
+                {
+                    message = "Unable to identify logged-in user."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.FullName))
+                return BadRequest(new { message = "Full name is required." });
+
+            if (string.IsNullOrWhiteSpace(request.Email))
+                return BadRequest(new { message = "Email is required." });
+
+            if (string.IsNullOrWhiteSpace(request.Phone))
+                return BadRequest(new { message = "Phone number is required." });
+
+            if (string.IsNullOrWhiteSpace(request.Nic))
+                return BadRequest(new { message = "NIC is required." });
+
+            if (string.IsNullOrWhiteSpace(request.Password))
+                return BadRequest(new { message = "Password is required." });
+
+            if (request.Password != request.ConfirmPassword)
+                return BadRequest(new
+                {
+                    message = "Password and confirm password do not match."
+                });
+
+            if (request.Password.Length < 8 ||
+                request.Password.Length > 100 ||
+                !request.Password.Any(char.IsUpper) ||
+                !request.Password.Any(char.IsLower) ||
+                !request.Password.Any(char.IsDigit))
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Password must be 8-100 characters and contain uppercase, lowercase and number."
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(request.DrivingLicenseNo))
+                return BadRequest(new
+                {
+                    message = "Driving licence number is required."
+                });
+
+            if (request.DrivingLicenseExpiry == null)
+                return BadRequest(new
+                {
+                    message = "Driving licence expiry date is required."
+                });
+
+            if (request.DrivingLicenseExpiry.Value.Date <= DateTime.Today)
+                return BadRequest(new
+                {
+                    message = "Driving licence expiry date must be a future date."
+                });
+
+            if (request.VehicleTypeId <= 0)
+                return BadRequest(new { message = "Vehicle type is required." });
+
+            if (string.IsNullOrWhiteSpace(request.RegistrationNumber))
+                return BadRequest(new
+                {
+                    message = "Vehicle registration number is required."
+                });
+
+            if (string.IsNullOrWhiteSpace(request.Make) ||
+                string.IsNullOrWhiteSpace(request.Model) ||
+                string.IsNullOrWhiteSpace(request.Color) ||
+                request.ManufactureYear == null)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        "Vehicle Make, Model, Color and Manufacture Year are required."
+                });
+            }
+
+            var currentYear = DateTime.Now.Year;
+            if (request.ManufactureYear < 1900 ||
+                request.ManufactureYear > currentYear + 1)
+            {
+                return BadRequest(new
+                {
+                    message =
+                        $"Manufacture year must be between 1900 and {currentYear + 1}."
+                });
+            }
+
+            var email = request.Email.Trim().ToLowerInvariant();
+            var phone = request.Phone.Trim();
+            var nic = request.Nic.Trim().ToUpperInvariant();
+            var licence = request.DrivingLicenseNo.Trim().ToUpperInvariant();
+            var registration =
+                request.RegistrationNumber.Trim().ToUpperInvariant();
+
+            if (await _context.Users.AnyAsync(u =>
+                    u.Email.ToLower() == email))
+                return BadRequest(new
+                {
+                    message = "This email address is already registered."
+                });
+
+            if (await _context.Users.AnyAsync(u => u.Phone == phone))
+                return BadRequest(new
+                {
+                    message = "This phone number is already registered."
+                });
+
+            if (await _context.Users.AnyAsync(u =>
+                    u.Nic != null && u.Nic.ToUpper() == nic))
+                return BadRequest(new
+                {
+                    message = "This NIC is already registered."
+                });
+
+            if (await _context.Drivers.AnyAsync(d =>
+                    d.DrivingLicenseNo == licence))
+                return BadRequest(new
+                {
+                    message = "Driving licence number already exists."
+                });
+
+            if (await _context.Vehicles.AnyAsync(v =>
+                    v.RegistrationNumber == registration))
+                return BadRequest(new
+                {
+                    message = "Vehicle registration number already exists."
+                });
+
+            var driverRole = await _context.Roles
+                .FirstOrDefaultAsync(r => r.RoleName == "DRIVER");
+
+            if (driverRole == null)
+                return BadRequest(new
+                {
+                    message = "DRIVER role is not configured in the database."
+                });
+
+            var vehicleType = await _context.VehicleTypes
+                .FirstOrDefaultAsync(vt =>
+                    vt.VehicleTypeId == request.VehicleTypeId);
+
+            if (vehicleType == null)
+                return BadRequest(new
+                {
+                    message = "Selected vehicle type does not exist."
+                });
+
+            await using var transaction =
+                await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                var user = new User
+                {
+                    FullName = request.FullName.Trim(),
+                    Email = email,
+                    Phone = phone,
+                    Nic = nic,
+                    AccountStatus = "ACTIVE",
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                };
+
+                var passwordHasher = new PasswordHasher<User>();
+                user.PasswordHash =
+                    passwordHasher.HashPassword(user, request.Password);
+
+                _context.Users.Add(user);
+                await _context.SaveChangesAsync();
+
+                _context.UserRoles.Add(new UserRole
+                {
+                    UserId = user.UserId,
+                    RoleId = driverRole.RoleId
+                });
+
+                var driver = new Driver
+                {
+                    UserId = user.UserId,
+                    DrivingLicenseNo = licence,
+                    Address = CleanOptional(request.Address, 255),
+                    DateOfBirth = request.DateOfBirth,
+                    DrivingLicenseExpiry = request.DrivingLicenseExpiry,
+                    VerificationStatus = "PENDING",
+                    OperationalStatus = "OFFLINE",
+                    GpsEnabled = false,
+                    VerifiedAt = null,
+                    CreatedAt = DateTime.Now
+                };
+
+                _context.Drivers.Add(driver);
+                await _context.SaveChangesAsync();
+
+                var vehicle = new Vehicle
+                {
+                    DriverId = driver.DriverId,
+                    VehicleTypeId = request.VehicleTypeId,
+                    RegistrationNumber = registration,
+                    Make = CleanOptional(request.Make, 100),
+                    Model = CleanOptional(request.Model, 100),
+                    Color = CleanOptional(request.Color, 50),
+                    ManufactureYear = request.ManufactureYear,
+                    GpsAvailable = request.GpsAvailable,
+                    OperationalStatus = "OFFLINE",
+                    AccountStatus = "ACTIVE",
+                    CreatedAt = DateTime.Now
+                };
+
+                _context.Vehicles.Add(vehicle);
+
+                _context.ActivityLogs.Add(new ActivityLog
+                {
+                    UserId = currentUserId.Value,
+                    ActivityType = "DRIVER_REGISTERED",
+                    Description =
+                        $"Driver '{user.Email}' registered with vehicle '{registration}' and is pending verification.",
+                    CreatedAt = DateTime.Now
+                });
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    message =
+                        "Driver registration created successfully. Upload the required documents and vehicle photos before approval.",
+                    userId = user.UserId,
+                    driverId = driver.DriverId,
+                    vehicleId = vehicle.VehicleId,
+                    verificationStatus = driver.VerificationStatus,
+                    operationalStatus = driver.OperationalStatus
+                });
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+
+                return StatusCode(500, new
+                {
+                    message =
+                        "An error occurred while registering the driver.",
+                    detail = ex.InnerException?.Message ?? ex.Message
+                });
+            }
         }
 
         // =========================================================
@@ -451,6 +1273,9 @@ namespace MmcTaxiApi.Controllers
             {
                 UserId = request.UserId,
                 DrivingLicenseNo = normalizedLicense,
+                Address = CleanOptional(request.Address, 255),
+                DateOfBirth = request.DateOfBirth,
+                DrivingLicenseExpiry = request.DrivingLicenseExpiry,
                 VerificationStatus = "PENDING",
                 OperationalStatus = "OFFLINE",
                 GpsEnabled = false,
@@ -607,6 +1432,9 @@ namespace MmcTaxiApi.Controllers
             var oldLicense = driver.DrivingLicenseNo;
 
             driver.DrivingLicenseNo = normalizedLicense;
+            driver.Address = CleanOptional(request.Address, 255);
+            driver.DateOfBirth = request.DateOfBirth;
+            driver.DrivingLicenseExpiry = request.DrivingLicenseExpiry;
 
             // Changing licence requires verification again.
             if (!string.Equals(
@@ -944,6 +1772,71 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
+            if (driver.DrivingLicenseExpiry == null)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver cannot be approved because driving licence expiry date is missing."
+                });
+            }
+
+            if (driver.DrivingLicenseExpiry.Value.Date <= DateTime.Today)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver cannot be approved because the driving licence is expired."
+                });
+            }
+
+            var vehicles = await _context.Vehicles
+                .Where(v => v.DriverId == id && v.AccountStatus == "ACTIVE")
+                .ToListAsync();
+
+            if (vehicles.Count == 0)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver cannot be approved because no active vehicle is assigned."
+                });
+            }
+
+            var eligibleVehicle = vehicles.FirstOrDefault(v =>
+                !string.IsNullOrWhiteSpace(v.Make) &&
+                !string.IsNullOrWhiteSpace(v.Model) &&
+                !string.IsNullOrWhiteSpace(v.Color) &&
+                v.ManufactureYear != null);
+
+            if (eligibleVehicle == null)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver cannot be approved until vehicle Make, Model, Color and Manufacture Year are completed."
+                });
+            }
+
+            var requiredPhotoTypes = new[] { "FRONT", "REAR", "SIDE" };
+
+            var uploadedPhotoTypes = await _context.VehiclePhotos
+                .Where(p => p.VehicleId == eligibleVehicle.VehicleId &&
+                            requiredPhotoTypes.Contains(p.PhotoType))
+                .Select(p => p.PhotoType)
+                .Distinct()
+                .ToListAsync();
+
+            var missingVehiclePhotos = requiredPhotoTypes
+                .Where(type => !uploadedPhotoTypes.Contains(type))
+                .ToList();
+
+            if (missingVehiclePhotos.Count > 0)
+            {
+                return BadRequest(new
+                {
+                    message = "Driver cannot be approved because required vehicle photos are missing.",
+                    vehicleId = eligibleVehicle.VehicleId,
+                    missingVehiclePhotos
+                });
+            }
+
             await using var transaction =
                 await _context.Database
                     .BeginTransactionAsync();
@@ -1124,11 +2017,81 @@ namespace MmcTaxiApi.Controllers
                 });
             }
         }
+
+        private static string? CleanOptional(string? value, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return null;
+
+            var cleaned = value.Trim();
+            return cleaned.Length <= maxLength ? cleaned : cleaned[..maxLength];
+        }
     }
 
     // =============================================================
     // DTOs
     // =============================================================
+
+    public class PublicDriverRegistrationRequest
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Nic { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Address { get; set; } = string.Empty;
+
+        public DateTime? DateOfBirth { get; set; }
+
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        public string DrivingLicenseNo { get; set; } = string.Empty;
+        public DateTime? DrivingLicenseExpiry { get; set; }
+
+        public int VehicleTypeId { get; set; }
+        public string RegistrationNumber { get; set; } = string.Empty;
+        public string? Make { get; set; }
+        public string? Model { get; set; }
+        public string? Color { get; set; }
+        public int? ManufactureYear { get; set; }
+        public bool GpsAvailable { get; set; } = true;
+
+        public IFormFile? NicDocument { get; set; }
+        public IFormFile? DrivingLicenseDocument { get; set; }
+        public IFormFile? PoliceReportDocument { get; set; }
+        public IFormFile? VehicleRegistrationDocument { get; set; }
+
+        public IFormFile? FrontPhoto { get; set; }
+        public IFormFile? RearPhoto { get; set; }
+        public IFormFile? SidePhoto { get; set; }
+        public IFormFile? OtherPhoto { get; set; }
+    }
+
+    public class RegisterDriverRequest
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Phone { get; set; } = string.Empty;
+        public string Nic { get; set; } = string.Empty;
+
+        public string Password { get; set; } = string.Empty;
+        public string ConfirmPassword { get; set; } = string.Empty;
+
+        public string? Address { get; set; }
+        public DateTime? DateOfBirth { get; set; }
+
+        public string DrivingLicenseNo { get; set; } = string.Empty;
+        public DateTime? DrivingLicenseExpiry { get; set; }
+
+        public int VehicleTypeId { get; set; }
+        public string RegistrationNumber { get; set; } = string.Empty;
+        public string? Make { get; set; }
+        public string? Model { get; set; }
+        public string? Color { get; set; }
+        public int? ManufactureYear { get; set; }
+
+        public bool GpsAvailable { get; set; } = true;
+    }
 
     public class CreateDriverRequest
     {
@@ -1136,12 +2099,24 @@ namespace MmcTaxiApi.Controllers
 
         public string DrivingLicenseNo { get; set; } =
             string.Empty;
+
+        public string? Address { get; set; }
+
+        public DateTime? DateOfBirth { get; set; }
+
+        public DateTime? DrivingLicenseExpiry { get; set; }
     }
 
     public class UpdateDriverRequest
     {
         public string DrivingLicenseNo { get; set; } =
             string.Empty;
+
+        public string? Address { get; set; }
+
+        public DateTime? DateOfBirth { get; set; }
+
+        public DateTime? DrivingLicenseExpiry { get; set; }
     }
 
     public class DriverStatusRequest

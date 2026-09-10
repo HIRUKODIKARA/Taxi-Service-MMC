@@ -22,6 +22,29 @@ namespace MmcTaxiApi.Models
         [MaxLength(50)]
         public string RegistrationNumber { get; set; } = string.Empty;
 
+        // ==========================================
+        // VEHICLE DETAILS
+        // ==========================================
+
+        [Column("make")]
+        [MaxLength(100)]
+        public string? Make { get; set; }
+
+        [Column("model")]
+        [MaxLength(100)]
+        public string? Model { get; set; }
+
+        [Column("color")]
+        [MaxLength(50)]
+        public string? Color { get; set; }
+
+        [Column("manufacture_year")]
+        public int? ManufactureYear { get; set; }
+
+        // ==========================================
+        // GPS / OPERATIONAL DETAILS
+        // ==========================================
+
         [Column("gps_available")]
         public bool GpsAvailable { get; set; }
 

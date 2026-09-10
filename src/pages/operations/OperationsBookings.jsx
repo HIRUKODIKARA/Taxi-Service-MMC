@@ -30,16 +30,56 @@ const formatText = (value) =>
     .replace(/\b\w/g, (c) => c.toUpperCase());
 
 function OperationsBookings() {
-  const [bookings,setBookings]=useState([]); const [vehicles,setVehicles]=useState([]); const [vehicleTypes,setVehicleTypes]=useState([]);
+  const [bookings,setBookings]=useState([]); const [vehicles,setVehicles]=useState([]); const [vehicleTypes,setVehicleTypes]=useState([]); const [operatorAreas,setOperatorAreas]=useState([]);
   const [search,setSearch]=useState(""); const [sourceFilter,setSourceFilter]=useState("ALL"); const [statusFilter,setStatusFilter]=useState("ALL");
   const [selected,setSelected]=useState(null); const [assignVehicleId,setAssignVehicleId]=useState(""); const [error,setError]=useState(""); const [message,setMessage]=useState(""); const [loading,setLoading]=useState(true);
 
-  const loadData=async()=>{
-    try{setLoading(true);setError("");const [bRes,vRes,tRes]=await Promise.all([fetch(`${API_BASE_URL}/bookings`,{headers:authHeaders()}),fetch(`${API_BASE_URL}/vehicles/available`,{headers:authHeaders()}),fetch(`${API_BASE_URL}/vehicletypes/all`,{headers:authHeaders()})]);const [bData,vData,tData]=await Promise.all([safeJson(bRes),safeJson(vRes),safeJson(tRes)]);if(!bRes.ok)throw new Error(bData?.message||"Unable to load bookings.");if(!vRes.ok)throw new Error(vData?.message||"Unable to load available vehicles.");setBookings(Array.isArray(bData)?bData:[]);setVehicles(Array.isArray(vData)?vData:[]);setVehicleTypes(tRes.ok&&Array.isArray(tData)?tData:[]);}catch(e){setError(e.message||"Unable to load booking management.");}finally{setLoading(false);}
+  const loadData=async(silent=false)=>{
+    try{
+      if(!silent)setLoading(true);
+      if(!silent)setError("");
+      const [bRes,vRes,tRes,aRes]=await Promise.all([
+        fetch(`${API_BASE_URL}/bookings`,{headers:authHeaders()}),
+        fetch(`${API_BASE_URL}/vehicles/available`,{headers:authHeaders()}),
+        fetch(`${API_BASE_URL}/vehicletypes/all`,{headers:authHeaders()}),
+        fetch(`${API_BASE_URL}/TaxiOperatorOperationalAreas/my-areas`,{headers:authHeaders()})
+      ]);
+      const [bData,vData,tData,aData]=await Promise.all([safeJson(bRes),safeJson(vRes),safeJson(tRes),safeJson(aRes)]);
+      if(!bRes.ok)throw new Error(bData?.message||"Unable to load bookings.");
+      if(!vRes.ok)throw new Error(vData?.message||"Unable to load available vehicles.");
+      if(!aRes.ok)throw new Error(aData?.message||"Unable to load your assigned Operational Areas.");
+      setBookings(Array.isArray(bData)?bData:[]);
+      setVehicles(Array.isArray(vData)?vData:[]);
+      setVehicleTypes(tRes.ok&&Array.isArray(tData)?tData:[]);
+      setOperatorAreas(Array.isArray(aData)?aData:[]);
+    }catch(e){
+      if(!silent)setError(e.message||"Unable to load booking management.");
+      else console.error("Auto refresh failed:",e);
+    }finally{
+      if(!silent)setLoading(false);
+    }
   };
-  useEffect(()=>{loadData();},[]);
+
+  useEffect(()=>{
+    loadData(false);
+    const intervalId=setInterval(()=>loadData(true),5000);
+    return()=>clearInterval(intervalId);
+  },[]);
   const typeName=(id)=>vehicleTypes.find((t)=>Number(t.vehicleTypeId)===Number(id))?.typeName||`Type #${id??"—"}`;
-  const filtered=useMemo(()=>bookings.filter((b)=>{const q=search.trim().toLowerCase();const searchOk=!q||[b.bookingId,b.passengerName,b.passengerPhone,b.pickupLocation,b.destination].some((x)=>(x??"").toString().toLowerCase().includes(q));return searchOk&&(sourceFilter==="ALL"||b.bookingSource===sourceFilter)&&(statusFilter==="ALL"||b.bookingStatus===statusFilter);}),[bookings,search,sourceFilter,statusFilter]);
+  const areaName=(id)=>operatorAreas.find((a)=>Number(a.operationalAreaId)===Number(id))?.areaName||`Area #${id??"—"}`;
+
+  // Area-based operational scope:
+  // - Bookings with an OperationalAreaId belong to that assigned area (Other Location -> Makumbura).
+  // - Bookings without an OperationalAreaId are treated as MMC/general bookings (Makumbura -> Other Location).
+  const scopedBookings=useMemo(()=>{
+    const myAreaIds=new Set(operatorAreas.map((a)=>Number(a.operationalAreaId)));
+    return bookings.filter((b)=>{
+      if(b.operationalAreaId===null||b.operationalAreaId===undefined||b.operationalAreaId==="") return true;
+      return myAreaIds.has(Number(b.operationalAreaId));
+    });
+  },[bookings,operatorAreas]);
+
+  const filtered=useMemo(()=>scopedBookings.filter((b)=>{const q=search.trim().toLowerCase();const searchOk=!q||[b.bookingId,b.passengerName,b.passengerPhone,b.pickupLocation,b.destination,b.operationalAreaId?areaName(b.operationalAreaId):"MMC"].some((x)=>(x??"").toString().toLowerCase().includes(q));return searchOk&&(sourceFilter==="ALL"||b.bookingSource===sourceFilter)&&(statusFilter==="ALL"||b.bookingStatus===statusFilter);}),[scopedBookings,search,sourceFilter,statusFilter,operatorAreas]);
   const openBooking=(b)=>{setSelected(b);setAssignVehicleId("");setError("");setMessage("");};
   const assign=async()=>{if(!selected||!assignVehicleId)return;const vehicle=vehicles.find((v)=>Number(v.vehicleId)===Number(assignVehicleId));if(!vehicle?.driverId){setError("Selected vehicle does not have an assigned driver.");return;}try{setError("");setMessage("");const res=await fetch(`${API_BASE_URL}/bookings/${selected.bookingId}/assign`,{method:"PUT",headers:authHeaders(),body:JSON.stringify({driverId:vehicle.driverId,vehicleId:vehicle.vehicleId})});const data=await safeJson(res);if(!res.ok)throw new Error(data?.message||"Unable to assign driver and vehicle.");setMessage("Driver and vehicle assigned. Waiting for driver acceptance.");setSelected(null);await loadData();}catch(e){setError(e.message);}};
   const eligibleVehicles=selected?vehicles.filter((v)=>Number(v.vehicleTypeId)===Number(selected.vehicleTypeId)):[];
@@ -53,12 +93,12 @@ function OperationsBookings() {
       @media(max-width:900px){.ob-summary{grid-template-columns:repeat(2,1fr)}.ob-tools{grid-template-columns:1fr}}@media(max-width:600px){.ob-page{padding:18px}.ob-summary,.ob-detail-grid{grid-template-columns:1fr}.ob-head{flex-direction:column}}
     `}</style>
     <main className="ob-page">
-      <div className="ob-head"><div><h1>Booking Management</h1><p>Manage website, phone and on-site bookings and assign available drivers.</p></div><button className="ob-btn" onClick={loadData}>Refresh</button></div>
+      <div className="ob-head"><div><h1>Booking Management</h1><p>Manage website, phone and on-site bookings and assign available drivers. <strong>Auto refresh: every 5 seconds</strong></p></div><button className="ob-btn" onClick={()=>loadData(false)}>Refresh</button></div>
       {error&&<div className="ob-err">{error}</div>}{message&&<div className="ob-msg">{message}</div>}
-      <div className="ob-summary"><div className="ob-card"><span>TOTAL</span><h2>{bookings.length}</h2></div><div className="ob-card"><span>PENDING</span><h2>{bookings.filter(b=>["PENDING","REJECTED"].includes(b.bookingStatus)).length}</h2></div><div className="ob-card"><span>ON RIDE</span><h2>{bookings.filter(b=>b.bookingStatus==="ON_RIDE").length}</h2></div><div className="ob-card"><span>COMPLETED</span><h2>{bookings.filter(b=>b.bookingStatus==="COMPLETED").length}</h2></div></div>
-      <section className="ob-panel"><div className="ob-tools"><input placeholder="Search booking, passenger, phone or destination..." value={search} onChange={e=>setSearch(e.target.value)}/><select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)}><option value="ALL">All Sources</option><option value="WEBSITE">Website</option><option value="PHONE">Phone</option><option value="ON_SITE">On-Site</option></select><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="ALL">All Status</option><option value="PENDING">Pending</option><option value="WAITING_FOR_DRIVER">Waiting for Driver</option><option value="ACCEPTED">Accepted</option><option value="DRIVER_ARRIVING">Driver Arriving</option><option value="ON_RIDE">On Ride</option><option value="COMPLETED">Completed</option><option value="REJECTED">Rejected</option></select></div>
-      <div className="ob-wrap"><table className="ob-table"><thead><tr><th>ID</th><th>Source</th><th>Passenger</th><th>Pickup</th><th>Destination</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Status</th><th>Action</th></tr></thead><tbody>{filtered.map((b)=><tr key={b.bookingId}><td><strong>BK{String(b.bookingId).padStart(4,"0")}</strong></td><td>{formatText(b.bookingSource)}</td><td><strong>{b.passengerName||"—"}</strong><div>{b.passengerPhone||"—"}</div></td><td>{b.pickupLocation}</td><td>{b.destination}</td><td>{typeName(b.vehicleTypeId)}</td><td>{b.assignedDriverId?`Driver #${b.assignedDriverId}`:"Not Assigned"}</td><td>{b.assignedVehicleId?`Vehicle #${b.assignedVehicleId}`:"—"}</td><td><span className="ob-tag">{formatText(b.bookingStatus)}</span></td><td><button className="ob-view" onClick={()=>openBooking(b)}>View</button></td></tr>)}{!loading&&filtered.length===0&&<tr><td colSpan="10">No bookings found.</td></tr>}</tbody></table></div></section>
-      {selected&&<div className="ob-overlay"><div className="ob-modal"><div className="ob-modal-head"><div><h2>Booking Details</h2><small>BK{String(selected.bookingId).padStart(4,"0")}</small></div><button className="ob-close" onClick={()=>setSelected(null)}>✕</button></div><div className="ob-detail-grid"><div className="ob-detail"><span>PASSENGER</span><strong>{selected.passengerName||"—"}</strong></div><div className="ob-detail"><span>PHONE</span><strong>{selected.passengerPhone||"—"}</strong></div><div className="ob-detail"><span>SOURCE</span><strong>{formatText(selected.bookingSource)}</strong></div><div className="ob-detail"><span>VEHICLE TYPE</span><strong>{typeName(selected.vehicleTypeId)}</strong></div><div className="ob-detail"><span>PICKUP</span><strong>{selected.pickupLocation}</strong></div><div className="ob-detail"><span>DESTINATION</span><strong>{selected.destination}</strong></div><div className="ob-detail"><span>DATE</span><strong>{selected.bookingDate||"—"}</strong></div><div className="ob-detail"><span>TIME</span><strong>{selected.bookingTime||"—"}</strong></div><div className="ob-detail"><span>DRIVER</span><strong>{selected.assignedDriverId?`Driver #${selected.assignedDriverId}`:"Not Assigned"}</strong></div><div className="ob-detail"><span>STATUS</span><strong>{formatText(selected.bookingStatus)}</strong></div></div>
+      <div className="ob-summary"><div className="ob-card"><span>VISIBLE BOOKINGS</span><h2>{scopedBookings.length}</h2></div><div className="ob-card"><span>MY ACTIVE AREAS</span><h2>{operatorAreas.length}</h2></div><div className="ob-card"><span>ON RIDE</span><h2>{scopedBookings.filter(b=>b.bookingStatus==="ON_RIDE").length}</h2></div><div className="ob-card"><span>COMPLETED</span><h2>{scopedBookings.filter(b=>b.bookingStatus==="COMPLETED").length}</h2></div></div>
+      <section className="ob-panel"><div className="ob-tools"><input placeholder="Search booking, passenger, phone or destination..." value={search} onChange={e=>setSearch(e.target.value)}/><select value={sourceFilter} onChange={e=>setSourceFilter(e.target.value)}><option value="ALL">All Sources</option><option value="WEBSITE">Website</option><option value="PHONE">Phone</option><option value="ON_SITE">On-Site</option></select><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="ALL">All Status</option><option value="PENDING">Pending</option><option value="WAITING_FOR_DRIVER">Waiting for Driver</option><option value="ACCEPTED">Accepted</option><option value="DRIVER_ARRIVING">Driver Arriving</option><option value="DRIVER_ARRIVED">Driver Arrived</option><option value="ON_RIDE">On Ride</option><option value="COMPLETED">Completed</option><option value="REJECTED">Rejected</option></select></div>
+      <div className="ob-wrap"><table className="ob-table"><thead><tr><th>ID</th><th>Source</th><th>Passenger</th><th>Pickup</th><th>Destination</th><th>Operational Area</th><th>Type</th><th>Driver</th><th>Vehicle</th><th>Status</th><th>Action</th></tr></thead><tbody>{filtered.map((b)=><tr key={b.bookingId}><td><strong>BK{String(b.bookingId).padStart(4,"0")}</strong></td><td>{formatText(b.bookingSource)}</td><td><strong>{b.passengerName||"—"}</strong><div>{b.passengerPhone||"—"}</div></td><td>{b.pickupLocation}</td><td>{b.destination}</td><td>{b.operationalAreaId?areaName(b.operationalAreaId):"MMC / General"}</td><td>{typeName(b.vehicleTypeId)}</td><td>{b.assignedDriverId?`Driver #${b.assignedDriverId}`:"Not Assigned"}</td><td>{b.assignedVehicleId?`Vehicle #${b.assignedVehicleId}`:"—"}</td><td><span className="ob-tag">{formatText(b.bookingStatus)}</span></td><td><button className="ob-view" onClick={()=>openBooking(b)}>View</button></td></tr>)}{!loading&&filtered.length===0&&<tr><td colSpan="11">No bookings found.</td></tr>}</tbody></table></div></section>
+      {selected&&<div className="ob-overlay"><div className="ob-modal"><div className="ob-modal-head"><div><h2>Booking Details</h2><small>BK{String(selected.bookingId).padStart(4,"0")}</small></div><button className="ob-close" onClick={()=>setSelected(null)}>✕</button></div><div className="ob-detail-grid"><div className="ob-detail"><span>PASSENGER</span><strong>{selected.passengerName||"—"}</strong></div><div className="ob-detail"><span>PHONE</span><strong>{selected.passengerPhone||"—"}</strong></div><div className="ob-detail"><span>SOURCE</span><strong>{formatText(selected.bookingSource)}</strong></div><div className="ob-detail"><span>VEHICLE TYPE</span><strong>{typeName(selected.vehicleTypeId)}</strong></div><div className="ob-detail"><span>PICKUP</span><strong>{selected.pickupLocation}</strong></div><div className="ob-detail"><span>DESTINATION</span><strong>{selected.destination}</strong></div><div className="ob-detail"><span>OPERATIONAL AREA</span><strong>{selected.operationalAreaId?areaName(selected.operationalAreaId):"MMC / General"}</strong></div><div className="ob-detail"><span>DATE</span><strong>{selected.bookingDate||"—"}</strong></div><div className="ob-detail"><span>TIME</span><strong>{selected.bookingTime||"—"}</strong></div><div className="ob-detail"><span>DRIVER</span><strong>{selected.assignedDriverId?`Driver #${selected.assignedDriverId}`:"Not Assigned"}</strong></div><div className="ob-detail"><span>STATUS</span><strong>{formatText(selected.bookingStatus)}</strong></div></div>
       {["PENDING","REJECTED"].includes(selected.bookingStatus)&&<div className="ob-assign"><h3>Assign Available Driver & Vehicle</h3><div className="ob-assign-row"><select className="ob-select" value={assignVehicleId} onChange={e=>setAssignVehicleId(e.target.value)}><option value="">Select matching vehicle</option>{eligibleVehicles.map(v=><option key={v.vehicleId} value={v.vehicleId}>{v.registrationNumber} · Driver #{v.driverId}</option>)}</select><button className="ob-yellow" disabled={!assignVehicleId} onClick={assign}>Assign</button></div>{eligibleVehicles.length===0&&<p style={{fontSize:10,color:'#a63737'}}>No available vehicle matches this requested type.</p>}</div>}</div></div>}
     </main>
   </>);
