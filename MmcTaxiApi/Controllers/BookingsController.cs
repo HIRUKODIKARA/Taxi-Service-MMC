@@ -258,6 +258,80 @@ namespace MmcTaxiApi.Controllers
                 });
             }
 
+            // =========================================================
+            // FARE SNAPSHOT
+            // Recalculate on the backend. Do not trust a fare amount sent
+            // by the browser.
+            // =========================================================
+            if (request.DistanceKm == null || request.DistanceKm < 0)
+            {
+                return BadRequest(new
+                {
+                    message = "A valid road distance is required to create the booking."
+                });
+            }
+
+            var fareSetting = await _context.FareSettings
+                .Include(x => x.FareSlabs)
+                .FirstOrDefaultAsync(x =>
+                    x.VehicleTypeId == request.VehicleTypeId &&
+                    x.Status == "ACTIVE");
+
+            if (fareSetting == null)
+            {
+                return BadRequest(new
+                {
+                    message = "No active fare setting was found for the selected vehicle type."
+                });
+            }
+
+            var distanceKm = request.DistanceKm.Value;
+            var normalFare = CalculateBookingDistanceFare(
+                distanceKm,
+                fareSetting.BaseDistanceKm,
+                fareSetting.BaseFare,
+                fareSetting.FareSlabs
+                    .Where(x => x.IsActive)
+                    .OrderBy(x => x.SortOrder)
+                    .ToList()
+            );
+
+            decimal routeDiscountAmount = 0m;
+
+            // Current booking model stores one operational area. For
+            // OTHER_TO_MMC, that is the external pickup area. A route
+            // discount needs two configured operational-area IDs, so it
+            // is applied here only when both IDs are supplied.
+            if (request.PickupOperationalAreaId.HasValue &&
+                request.DestinationOperationalAreaId.HasValue &&
+                request.PickupOperationalAreaId.Value !=
+                request.DestinationOperationalAreaId.Value)
+            {
+                var fromId = request.PickupOperationalAreaId.Value;
+                var toId = request.DestinationOperationalAreaId.Value;
+
+                var routeDiscount = await _context.SpecialRouteDiscounts
+                    .Where(x => x.Status == "ACTIVE")
+                    .FirstOrDefaultAsync(x =>
+                        (x.FromOperationalAreaId == fromId &&
+                         x.ToOperationalAreaId == toId) ||
+                        (x.BothDirections &&
+                         x.FromOperationalAreaId == toId &&
+                         x.ToOperationalAreaId == fromId));
+
+                if (routeDiscount != null)
+                {
+                    routeDiscountAmount = CalculateBookingDiscount(
+                        normalFare,
+                        routeDiscount.DiscountType,
+                        routeDiscount.DiscountValue
+                    );
+                }
+            }
+
+            var estimatedFare =
+                Math.Max(0m, normalFare - routeDiscountAmount);
+
             var booking = new Booking
             {
                 BookingId = 0,
@@ -285,6 +359,28 @@ namespace MmcTaxiApi.Controllers
                 AssignedVehicleId = null,
 
                 BookingStatus = "PENDING",
+
+                // Fare values are stored as a snapshot so later Super Admin
+                // rate changes do not alter old bookings.
+                DistanceKm = RoundBookingMoney(distanceKm),
+                NormalFare = RoundBookingMoney(normalFare),
+                RouteDiscountAmount = RoundBookingMoney(routeDiscountAmount),
+                EstimatedFare = RoundBookingMoney(estimatedFare),
+
+                WaitingMinutes = 0,
+                WaitingChargePerMinute = fareSetting.WaitingChargePerMinute,
+                WaitingCharge = 0.00m,
+
+                // At booking time there is no waiting charge yet, therefore
+                // the current final fare starts as the estimated fare.
+                FinalFare = RoundBookingMoney(estimatedFare),
+
+                DriverPercentage = fareSetting.DriverPercentage,
+                MmcPercentage = fareSetting.MmcPercentage,
+                DriverShare = RoundBookingMoney(
+                    estimatedFare * (fareSetting.DriverPercentage / 100m)),
+                MmcShare = RoundBookingMoney(
+                    estimatedFare * (fareSetting.MmcPercentage / 100m)),
 
                 CreatedByUserId = currentUserId.Value,
 
@@ -1036,8 +1132,11 @@ namespace MmcTaxiApi.Controllers
 
             try
             {
+                var arrivedAt = DateTime.Now;
+
                 booking.BookingStatus = "DRIVER_ARRIVED";
-                booking.UpdatedAt = DateTime.Now;
+                booking.DriverArrivedAt = arrivedAt;
+                booking.UpdatedAt = arrivedAt;
 
                 AddBookingHistoryEntity(
                     booking.BookingId,
@@ -1142,8 +1241,69 @@ namespace MmcTaxiApi.Controllers
 
             try
             {
+                var tripStartedAt = DateTime.Now;
+
                 booking.BookingStatus = "ON_RIDE";
-                booking.UpdatedAt = DateTime.Now;
+                booking.TripStartedAt = tripStartedAt;
+
+                // Waiting time starts when the driver confirms arrival and
+                // stops when the driver starts the trip.
+                //
+                // MMC grace period:
+                // The first 5 completed waiting minutes are FREE.
+                // Waiting charge starts only from minute 6 onward.
+                var waitingMinutes = 0;
+
+                if (booking.DriverArrivedAt.HasValue)
+                {
+                    var waitingDuration =
+                        tripStartedAt - booking.DriverArrivedAt.Value;
+
+                    if (waitingDuration.TotalMinutes > 0)
+                    {
+                        // Store the passenger's TOTAL completed waiting time.
+                        waitingMinutes = (int)Math.Floor(
+                            waitingDuration.TotalMinutes);
+                    }
+                }
+
+                const int waitingGraceMinutes = 5;
+
+                var chargeableWaitingMinutes =
+                    Math.Max(0, waitingMinutes - waitingGraceMinutes);
+
+                var waitingRate =
+                    booking.WaitingChargePerMinute ?? 0m;
+
+                var waitingCharge =
+                    RoundBookingMoney(
+                        chargeableWaitingMinutes * waitingRate);
+
+                var estimatedFare =
+                    booking.EstimatedFare ??
+                    booking.NormalFare ??
+                    0m;
+
+                var currentFinalFare =
+                    RoundBookingMoney(estimatedFare + waitingCharge);
+
+                var driverPercentage =
+                    booking.DriverPercentage ?? 90m;
+
+                var mmcPercentage =
+                    booking.MmcPercentage ?? 10m;
+
+                booking.WaitingMinutes = waitingMinutes;
+                booking.WaitingCharge = waitingCharge;
+                booking.FinalFare = currentFinalFare;
+
+                booking.DriverShare = RoundBookingMoney(
+                    currentFinalFare * (driverPercentage / 100m));
+
+                booking.MmcShare = RoundBookingMoney(
+                    currentFinalFare * (mmcPercentage / 100m));
+
+                booking.UpdatedAt = tripStartedAt;
 
                 driver.OperationalStatus = "ON_RIDE";
                 vehicle.OperationalStatus = "ON_RIDE";
@@ -1153,7 +1313,7 @@ namespace MmcTaxiApi.Controllers
                     oldStatus,
                     "ON_RIDE",
                     driver.UserId,
-                    "Ride started"
+                    $"Ride started. Total waiting: {waitingMinutes} min; billable waiting after 5 min grace period: {chargeableWaitingMinutes} min."
                 );
 
                 if (booking.PassengerId != null)
@@ -1241,8 +1401,35 @@ namespace MmcTaxiApi.Controllers
 
             try
             {
+                var completedAt = DateTime.Now;
+
+                // Final fare = estimated fare after route discount
+                //            + waiting charge captured when the trip started.
+                var estimatedFare =
+                    booking.EstimatedFare ??
+                    booking.NormalFare ??
+                    0m;
+
+                var waitingCharge =
+                    booking.WaitingCharge;
+
+                var finalFare =
+                    RoundBookingMoney(estimatedFare + waitingCharge);
+
+                var driverPercentage =
+                    booking.DriverPercentage ?? 90m;
+
+                var mmcPercentage =
+                    booking.MmcPercentage ?? 10m;
+
+                booking.FinalFare = finalFare;
+                booking.DriverShare = RoundBookingMoney(
+                    finalFare * (driverPercentage / 100m));
+                booking.MmcShare = RoundBookingMoney(
+                    finalFare * (mmcPercentage / 100m));
+
                 booking.BookingStatus = "COMPLETED";
-                booking.UpdatedAt = DateTime.Now;
+                booking.UpdatedAt = completedAt;
 
                 if (driver != null)
                 {
@@ -1284,7 +1471,24 @@ namespace MmcTaxiApi.Controllers
                 return Ok(new
                 {
                     message = "Ride completed successfully.",
-                    booking
+                    booking,
+                    fareSummary = new
+                    {
+                        distanceKm = booking.DistanceKm,
+                        normalFare = booking.NormalFare,
+                        routeDiscountAmount = booking.RouteDiscountAmount,
+                        estimatedFare = booking.EstimatedFare,
+                        waitingMinutes = booking.WaitingMinutes,
+                        waitingGraceMinutes = 5,
+                        chargeableWaitingMinutes = Math.Max(0, booking.WaitingMinutes - 5),
+                        waitingChargePerMinute = booking.WaitingChargePerMinute,
+                        waitingCharge = booking.WaitingCharge,
+                        finalFare = booking.FinalFare,
+                        driverPercentage = booking.DriverPercentage,
+                        driverShare = booking.DriverShare,
+                        mmcPercentage = booking.MmcPercentage,
+                        mmcShare = booking.MmcShare
+                    }
                 });
             }
             catch
@@ -1344,6 +1548,64 @@ namespace MmcTaxiApi.Controllers
             await _context.SaveChangesAsync();
             return Ok(new { message = "Booking cancelled successfully.", bookingId = booking.BookingId, bookingStatus = booking.BookingStatus });
         }
+
+        // =========================================================
+        // FARE HELPERS
+        // Keep the booking snapshot calculation consistent with FareController.
+        // =========================================================
+
+        private static decimal CalculateBookingDistanceFare(
+            decimal distanceKm,
+            decimal baseDistanceKm,
+            decimal baseFare,
+            List<FareSlab> slabs)
+        {
+            if (distanceKm <= baseDistanceKm)
+                return baseFare;
+
+            decimal fare = baseFare;
+
+            foreach (var slab in slabs)
+            {
+                if (distanceKm <= slab.FromKm)
+                    continue;
+
+                var upper = slab.ToKm.HasValue
+                    ? Math.Min(distanceKm, slab.ToKm.Value)
+                    : distanceKm;
+
+                var chargeableKm = upper - slab.FromKm;
+
+                if (chargeableKm > 0)
+                    fare += chargeableKm * slab.RatePerKm;
+            }
+
+            return fare;
+        }
+
+        private static decimal CalculateBookingDiscount(
+            decimal amount,
+            string discountType,
+            decimal discountValue)
+        {
+            var type = (discountType ?? string.Empty)
+                .Trim()
+                .ToUpperInvariant();
+
+            if (type == "FIXED")
+                return Math.Min(amount, Math.Max(0m, discountValue));
+
+            if (type == "PERCENTAGE")
+            {
+                var percentage = Math.Clamp(discountValue, 0m, 100m);
+                return amount * (percentage / 100m);
+            }
+
+            return 0m;
+        }
+
+        private static decimal RoundBookingMoney(decimal value) =>
+            Math.Round(value, 2, MidpointRounding.AwayFromZero);
 
         // =========================================================
         // Helpers
@@ -1458,6 +1720,15 @@ namespace MmcTaxiApi.Controllers
         public TimeSpan? BookingTime { get; set; }
 
         public int VehicleTypeId { get; set; }
+
+        // Road distance calculated by the frontend routing service.
+        // The backend uses this distance with its own fare settings.
+        public decimal? DistanceKm { get; set; }
+
+        // Optional route endpoints for future/special route discounts.
+        public int? PickupOperationalAreaId { get; set; }
+
+        public int? DestinationOperationalAreaId { get; set; }
 
         // =========================================================
         // OPTIONAL TAXI OPERATOR / ADMIN BOOKING DETAILS

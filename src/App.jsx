@@ -48,6 +48,7 @@ import RolesPermissions from "./pages/superAdmin/RolesPermissions";
 import Reports from "./pages/superAdmin/Reports";
 import ActivityMonitoring from "./pages/superAdmin/ActivityMonitoring";
 import SystemSettings from "./pages/superAdmin/SystemSettings";
+import FareManagement from "./pages/superAdmin/FareManagement";
 
 /* =========================================================
    ADMIN
@@ -465,6 +466,11 @@ function App() {
           <Route
             path="bookings"
             element={<BookingManagement />}
+          />
+
+          <Route
+            path="fare-management"
+            element={<FareManagement />}
           />
 
           <Route

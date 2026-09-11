@@ -5,6 +5,7 @@ import "leaflet/dist/leaflet.css";
 
 const API_BASE_URL = "http://localhost:5171/api";
 const MMC_NAME = "Makumbura Multimodal Center";
+const MMC_LOCATION = { lat: 6.8407003, lng: 79.9757581 };
 const SRI_LANKA_CENTER = [7.8731, 80.7718];
 
 const markerIcon = L.icon({
@@ -96,6 +97,10 @@ function BookTaxi() {
   const [searching, setSearching] = useState(false);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState("");
+  const [roadDistanceKm, setRoadDistanceKm] = useState(null);
+  const [fareEstimates, setFareEstimates] = useState([]);
+  const [fareLoading, setFareLoading] = useState(false);
+  const [fareError, setFareError] = useState("");
 
   // Location autocomplete helpers
   const autocompleteAbortRef = useRef(null);
@@ -162,6 +167,13 @@ function BookTaxi() {
     (area) => Number(area.operationalAreaId) === Number(formData.operationalAreaId)
   );
 
+  const resetFare = () => {
+    setRoadDistanceKm(null);
+    setFareEstimates([]);
+    setFareError("");
+    setFareLoading(false);
+  };
+
   const resetMapSelection = () => {
     if (autocompleteAbortRef.current) {
       autocompleteAbortRef.current.abort();
@@ -174,6 +186,7 @@ function BookTaxi() {
     setLocationConfirmed(false);
     setSearchText("");
     setSearchResults([]);
+    resetFare();
   };
 
   const handleChange = (e) => {
@@ -212,6 +225,7 @@ function BookTaxi() {
     const lng = Number(lngValue);
     setError("");
     setLocationConfirmed(false);
+    resetFare();
     setSelectedLocation({ lat, lng });
     const address = knownAddress || (await reverseGeocode(lat, lng));
     setSelectedAddress(address);
@@ -233,6 +247,115 @@ function BookTaxi() {
       destination: p.tripDirection === "MMC_TO_OTHER" ? selectedAddress : MMC_NAME,
     }));
   };
+
+  const calculateRoadDistance = async () => {
+    if (!selectedLocation || !locationConfirmed) return;
+
+    const outward = formData.tripDirection === "MMC_TO_OTHER";
+    const start = outward ? MMC_LOCATION : selectedLocation;
+    const end = outward ? selectedLocation : MMC_LOCATION;
+
+    setFareLoading(true);
+    setFareError("");
+    setFareEstimates([]);
+    setRoadDistanceKm(null);
+
+    try {
+      const routeUrl =
+        `https://router.project-osrm.org/route/v1/driving/` +
+        `${start.lng},${start.lat};${end.lng},${end.lat}` +
+        `?overview=false&steps=false`;
+
+      const routeResponse = await fetch(routeUrl);
+      if (!routeResponse.ok) throw new Error("Unable to calculate road distance.");
+
+      const routeData = await routeResponse.json();
+      const meters = routeData?.routes?.[0]?.distance;
+      if (!Number.isFinite(meters)) {
+        throw new Error("No drivable road route was found for this location.");
+      }
+
+      const distanceKm = Number((meters / 1000).toFixed(2));
+      setRoadDistanceKm(distanceKm);
+
+      const token = getToken();
+      if (!token) throw new Error("Please login again to calculate the fare.");
+
+      const fareResponse = await fetch(`${API_BASE_URL}/fare/estimate-all`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          distanceKm,
+          pickupOperationalAreaId:
+            outward || !formData.operationalAreaId
+              ? null
+              : Number(formData.operationalAreaId),
+          destinationOperationalAreaId: null,
+        }),
+      });
+
+      let fareData = null;
+      try { fareData = await fareResponse.json(); } catch {}
+
+      if (!fareResponse.ok) {
+        throw new Error(
+          fareData?.message || fareData?.title || "Unable to calculate estimated fares."
+        );
+      }
+
+      const list = Array.isArray(fareData)
+        ? fareData
+        : Array.isArray(fareData?.estimates)
+        ? fareData.estimates
+        : Array.isArray(fareData?.fares)
+        ? fareData.fares
+        : [];
+
+      setFareEstimates(list);
+    } catch (err) {
+      console.error(err);
+      setFareError(err?.message || "Unable to calculate the road distance and fare.");
+    } finally {
+      setFareLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!locationConfirmed || !selectedLocation) return;
+    calculateRoadDistance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    locationConfirmed,
+    selectedLocation?.lat,
+    selectedLocation?.lng,
+    formData.tripDirection,
+    formData.operationalAreaId,
+  ]);
+
+  const getFareForVehicle = (vehicleTypeId) =>
+    fareEstimates.find(
+      (item) => Number(item.vehicleTypeId ?? item.VehicleTypeId) === Number(vehicleTypeId)
+    );
+
+  const getEstimatedFareValue = (item) =>
+    Number(
+      item?.estimatedFare ??
+        item?.EstimatedFare ??
+        item?.finalFare ??
+        item?.FinalFare ??
+        item?.normalFare ??
+        item?.NormalFare ??
+        0
+    );
+
+  const formatMoney = (value) =>
+    `Rs. ${Number(value || 0).toLocaleString("en-LK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
 
   const formatPhotonAddress = (feature) => {
     const p = feature?.properties || {};
@@ -470,6 +593,14 @@ function BookTaxi() {
           ? "Please select and confirm the exact destination."
           : "Please select and confirm the exact pickup location."
       );
+    if (roadDistanceKm == null || !Number.isFinite(Number(roadDistanceKm)))
+      return setError(
+        "Please wait until the road distance and estimated fare are calculated."
+      );
+    if (!getFareForVehicle(formData.vehicleTypeId))
+      return setError(
+        "Please wait until the estimated fare for the selected vehicle is available."
+      );
     if (
       formData.bookingMode === "SCHEDULE" &&
       (!formData.date || !formData.time)
@@ -504,6 +635,19 @@ function BookTaxi() {
         bookingDate,
         bookingTime,
         vehicleTypeId: Number(formData.vehicleTypeId),
+
+        // Fare snapshot input for the backend.
+        // The backend recalculates the actual fare using fare_settings/fare_slabs.
+        distanceKm: Number(roadDistanceKm),
+
+        // For OTHER_TO_MMC the selected operational area is the pickup area.
+        // MMC itself is not currently stored as an operational-area ID,
+        // so the destination route-area ID remains null.
+        pickupOperationalAreaId:
+          outward || !formData.operationalAreaId
+            ? null
+            : Number(formData.operationalAreaId),
+        destinationOperationalAreaId: null,
       };
 
       const response = await fetch(`${API_BASE_URL}/bookings`, {
@@ -539,9 +683,12 @@ function BookTaxi() {
             ? currentDateTime.displayTime
             : formData.time,
         status: created.bookingStatus || created.BookingStatus || "PENDING",
+        estimatedFare: getEstimatedFareValue(getFareForVehicle(formData.vehicleTypeId)),
+        distanceKm: roadDistanceKm,
       });
 
       resetMapSelection();
+      resetFare();
       setFormData((p) => ({
         ...p,
         operationalAreaId: "",
@@ -585,7 +732,7 @@ function BookTaxi() {
         .results{margin-bottom:10px;border:1px solid #e0e6eb;border-radius:7px;overflow:hidden;background:#fff}.result{display:block;width:100%;border:0;border-bottom:1px solid #edf0f2;padding:10px 11px;background:#fff;text-align:left;color:#53616e;font-size:9px;line-height:1.45;cursor:pointer}.result:hover{background:#fff9dc}
         .location-map{height:310px;width:100%;border-radius:8px;border:1px solid #dfe5ea;z-index:1}.selected-card{margin-top:10px;padding:12px;border:1px solid #dbe5ec;border-radius:7px;background:#fff}.selected-card strong{display:block;margin-bottom:5px;color:#0b2946;font-size:10px}.selected-card p{margin:0 0 7px;color:#667786;font-size:9px;line-height:1.5}.selected-card small{color:#8a98a5;font-size:8px}.confirm-location-btn{width:100%;margin-top:10px;padding:11px 12px;background:#f6c20d;color:#0b2946}.confirmed-badge{margin-top:8px;padding:8px 10px;border-radius:6px;background:#eaf7ed;color:#18763a;font-size:9px;font-weight:700;text-align:center}
         .submit{width:100%;margin-top:20px;border:0;padding:12px;border-radius:6px;background:#f6c20d;color:#0b2946;font-size:11px;font-weight:800;cursor:pointer}.submit:disabled{opacity:.65}.user{margin-bottom:18px;padding:12px 14px;background:#f8fafc;border:1px solid #e4e9ed;border-radius:7px}.user strong{display:block;color:#0b2946;font-size:11px}.user span{color:#7a8792;font-size:9px}.error{margin-bottom:18px;padding:12px 14px;background:#fff1f1;border:1px solid #efc6c6;border-radius:7px;color:#a43b3b;font-size:10px}
-        .vehicle{padding:14px;margin-bottom:10px;background:#f8fafc;border:1px solid #e4e9ed;border-radius:8px}.vehicle strong{color:#0b2946;font-size:11px}.vehicle p{margin:5px 0 0;color:#7a8792;font-size:9px}.note{margin-top:17px;padding:13px;background:#eef6ff;border-radius:7px;color:#60758a;font-size:10px;line-height:1.6}.confirm{margin-top:20px;padding:18px;background:#eaf7ed;border:1px solid #cce8d2;border-radius:9px}.confirm h3{margin:0 0 10px;color:#18763a;font-size:14px}.confirm p{margin:6px 0;color:#53616e;font-size:10px}
+        .vehicle{padding:14px;margin-bottom:10px;background:#f8fafc;border:1px solid #e4e9ed;border-radius:8px;cursor:pointer;transition:.15s}.vehicle:hover{border-color:#f6c20d}.vehicle.selected{border-color:#f6c20d;background:#fff9dc;box-shadow:0 0 0 1px #f6c20d inset}.vehicle strong{color:#0b2946;font-size:11px}.vehicle p{margin:5px 0 0;color:#7a8792;font-size:9px}.fare-price{margin-top:8px!important;color:#0b2946!important;font-size:14px!important;font-weight:800}.old-fare{text-decoration:line-through;color:#8a98a5;margin-right:7px}.promo{margin-top:6px;padding:7px 8px;border-radius:6px;background:#eaf7ed;color:#18763a;font-size:8px;font-weight:700}.distance-box{margin:0 0 12px;padding:12px;border-radius:8px;background:#eef6ff;color:#0b2946;font-size:10px;line-height:1.55}.fare-loading{margin:0 0 12px;padding:11px;border-radius:7px;background:#fff9dc;color:#775e00;font-size:9px}.fare-error{margin:0 0 12px;padding:11px;border-radius:7px;background:#fff1f1;color:#a43b3b;font-size:9px}.note{margin-top:17px;padding:13px;background:#eef6ff;border-radius:7px;color:#60758a;font-size:10px;line-height:1.6}.confirm{margin-top:20px;padding:18px;background:#eaf7ed;border:1px solid #cce8d2;border-radius:9px}.confirm h3{margin:0 0 10px;color:#18763a;font-size:14px}.confirm p{margin:6px 0;color:#53616e;font-size:10px}
         @media(max-width:850px){.container,.grid,.directions,.booking-modes{grid-template-columns:1fr}.full,.picker,.booking-mode-wrap{grid-column:auto}.book-taxi-page{padding:20px}}
       `}</style>
 
@@ -767,6 +914,21 @@ function BookTaxi() {
                   </select>
                 </div>
 
+                <div className="field">
+                  <label>Estimated Fare</label>
+                  <input
+                    className="readonly"
+                    readOnly
+                    value={
+                      fareLoading
+                        ? "Calculating..."
+                        : getFareForVehicle(formData.vehicleTypeId)
+                        ? formatMoney(getEstimatedFareValue(getFareForVehicle(formData.vehicleTypeId)))
+                        : "Confirm location to calculate"
+                    }
+                  />
+                </div>
+
                 <div className="booking-mode-wrap">
                   <div className="field">
                     <label>Booking Type</label>
@@ -865,26 +1027,73 @@ function BookTaxi() {
                 <p><strong>Destination:</strong> {confirmation.destination}</p>
                 <p><strong>Date:</strong> {confirmation.date}</p>
                 <p><strong>Time:</strong> {confirmation.time}</p>
+                {confirmation.distanceKm != null && <p><strong>Road Distance:</strong> {confirmation.distanceKm} km</p>}
+                {confirmation.estimatedFare > 0 && <p><strong>Estimated Fare:</strong> {formatMoney(confirmation.estimatedFare)}</p>}
                 <p><strong>Status:</strong> {formatStatus(confirmation.status)}</p>
               </div>
             )}
           </section>
 
           <aside className="card">
-            <h2>Vehicle Options</h2>
+            <h2>Vehicle Options & Estimated Fares</h2>
+
+            {roadDistanceKm != null && (
+              <div className="distance-box">
+                <strong>Road Distance:</strong> {roadDistanceKm} km
+                <br />
+                Select the vehicle option you prefer.
+              </div>
+            )}
+
+            {fareLoading && <div className="fare-loading">Calculating road distance and fares...</div>}
+            {fareError && <div className="fare-error">{fareError}</div>}
+
             {loadingVehicles ? (
               <div className="note">Loading vehicle types...</div>
             ) : (
-              vehicleTypes.map((vehicle) => (
-                <div className="vehicle" key={vehicle.vehicleTypeId}>
-                  <strong>{vehicleIcon(vehicle.typeName)} {vehicle.typeName}</strong>
-                  <p>{vehicle.description || "Available vehicle option for your journey."}</p>
-                  <p>Passenger capacity: {vehicle.passengerCapacity}</p>
-                </div>
-              ))
+              vehicleTypes.map((vehicle) => {
+                const fare = getFareForVehicle(vehicle.vehicleTypeId);
+                const estimatedFare = getEstimatedFareValue(fare);
+                const normalFare = Number(fare?.normalFare ?? fare?.NormalFare ?? estimatedFare);
+                const discount = Number(
+                  fare?.routeDiscountAmount ?? fare?.RouteDiscountAmount ?? fare?.discountAmount ?? fare?.DiscountAmount ?? 0
+                );
+                const promoMessage = fare?.promoMessage ?? fare?.PromoMessage ?? "";
+
+                return (
+                  <div
+                    className={`vehicle ${Number(formData.vehicleTypeId) === Number(vehicle.vehicleTypeId) ? "selected" : ""}`}
+                    key={vehicle.vehicleTypeId}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setFormData((p) => ({ ...p, vehicleTypeId: String(vehicle.vehicleTypeId) }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        setFormData((p) => ({ ...p, vehicleTypeId: String(vehicle.vehicleTypeId) }));
+                      }
+                    }}
+                  >
+                    <strong>{vehicleIcon(vehicle.typeName)} {vehicle.typeName}</strong>
+                    <p>{vehicle.description || "Available vehicle option for your journey."}</p>
+                    <p>Passenger capacity: {vehicle.passengerCapacity}</p>
+
+                    {fare && estimatedFare > 0 && (
+                      <>
+                        <p className="fare-price">
+                          {discount > 0 && normalFare > estimatedFare && (
+                            <span className="old-fare">{formatMoney(normalFare)}</span>
+                          )}
+                          {formatMoney(estimatedFare)}
+                        </p>
+                        {promoMessage && <div className="promo">{promoMessage}</div>}
+                      </>
+                    )}
+                  </div>
+                );
+              })
             )}
             <div className="note">
-              Start typing at least 2 letters to get location suggestions, or use your current location/map. Confirm the exact location before requesting the taxi.
+              Confirm the exact pickup/destination first. The system will calculate the drivable road distance and show estimated fares for the available vehicle types.
             </div>
             <div className="note">
               Your request will be processed through Makumbura Taxi Operations. Tracking becomes available after a driver accepts the booking.

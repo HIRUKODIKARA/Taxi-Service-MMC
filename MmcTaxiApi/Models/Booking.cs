@@ -1,3 +1,4 @@
+using System;
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
@@ -30,9 +31,6 @@ namespace MmcTaxiApi.Models
 
         // =========================================================
         // TRIP DIRECTION
-        // Expected values:
-        // MMC_TO_OTHER
-        // OTHER_TO_MMC
         // =========================================================
 
         [Column("trip_direction")]
@@ -41,7 +39,6 @@ namespace MmcTaxiApi.Models
 
         // =========================================================
         // OPERATIONAL AREA
-        // Mainly used for OTHER_TO_MMC bookings
         // =========================================================
 
         [Column("operational_area_id")]
@@ -108,6 +105,64 @@ namespace MmcTaxiApi.Models
         [Column("booking_status")]
         [MaxLength(30)]
         public string BookingStatus { get; set; } = "PENDING";
+
+        // =========================================================
+        // FARE SNAPSHOT
+        // =========================================================
+
+        [Column("distance_km", TypeName = "decimal(10,2)")]
+        public decimal? DistanceKm { get; set; }
+
+        [Column("normal_fare", TypeName = "decimal(10,2)")]
+        public decimal? NormalFare { get; set; }
+
+        [Column("route_discount_amount", TypeName = "decimal(10,2)")]
+        public decimal RouteDiscountAmount { get; set; } = 0.00m;
+
+        [Column("estimated_fare", TypeName = "decimal(10,2)")]
+        public decimal? EstimatedFare { get; set; }
+
+        // =========================================================
+        // WAITING TIME
+        // =========================================================
+
+        [Column("driver_arrived_at")]
+        public DateTime? DriverArrivedAt { get; set; }
+
+        [Column("trip_started_at")]
+        public DateTime? TripStartedAt { get; set; }
+
+        [Column("waiting_minutes")]
+        public int WaitingMinutes { get; set; } = 0;
+
+        [Column("waiting_charge_per_minute", TypeName = "decimal(10,2)")]
+        public decimal? WaitingChargePerMinute { get; set; }
+
+        [Column("waiting_charge", TypeName = "decimal(10,2)")]
+        public decimal WaitingCharge { get; set; } = 0.00m;
+
+        // =========================================================
+        // FINAL FARE
+        // =========================================================
+
+        [Column("final_fare", TypeName = "decimal(10,2)")]
+        public decimal? FinalFare { get; set; }
+
+        // =========================================================
+        // DRIVER / MMC REVENUE SHARE
+        // =========================================================
+
+        [Column("driver_percentage", TypeName = "decimal(5,2)")]
+        public decimal? DriverPercentage { get; set; }
+
+        [Column("mmc_percentage", TypeName = "decimal(5,2)")]
+        public decimal? MmcPercentage { get; set; }
+
+        [Column("driver_share", TypeName = "decimal(10,2)")]
+        public decimal? DriverShare { get; set; }
+
+        [Column("mmc_share", TypeName = "decimal(10,2)")]
+        public decimal? MmcShare { get; set; }
 
         // =========================================================
         // CREATED BY

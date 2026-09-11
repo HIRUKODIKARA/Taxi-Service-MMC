@@ -90,6 +90,15 @@ namespace MmcTaxiApi.Data
             TaxiOperatorOperationalAreas { get; set; }
 
         // =========================================================
+        // FARE MANAGEMENT
+        // =========================================================
+
+        public DbSet<FareSetting> FareSettings { get; set; }
+        public DbSet<FareSlab> FareSlabs { get; set; }
+        public DbSet<SpecialRouteDiscount> SpecialRouteDiscounts { get; set; }
+        public DbSet<Offer> Offers { get; set; }
+
+        // =========================================================
         // DATABASE TABLE MAPPING
         // =========================================================
 

@@ -389,6 +389,19 @@ function MyBookings() {
       .substring(0, 5);
   };
 
+  const formatMoney = (value) => {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
+      return "Rs. 0.00";
+    }
+
+    return `Rs. ${number.toLocaleString("en-LK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   return (
     <>
       <style>{`
@@ -785,6 +798,69 @@ function MyBookings() {
           line-height: 1.5;
         }
 
+        .passenger-fare-section {
+          grid-column: 1 / -1;
+          margin-top: 4px;
+          padding: 16px;
+          border: 1px solid #dce5ec;
+          border-radius: 9px;
+          background: #f8fafc;
+        }
+
+        .passenger-fare-section h3 {
+          margin: 0 0 12px;
+          color: #0b2946;
+          font-size: 12px;
+        }
+
+        .passenger-fare-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+
+        .passenger-fare-item {
+          padding: 11px;
+          border: 1px solid #e7ebef;
+          border-radius: 7px;
+          background: white;
+        }
+
+        .passenger-fare-item span {
+          display: block;
+          margin-bottom: 5px;
+          color: #8a959f;
+          font-size: 8px;
+          text-transform: uppercase;
+        }
+
+        .passenger-fare-item strong {
+          color: #0b2946;
+          font-size: 11px;
+        }
+
+        .passenger-fare-item.final {
+          grid-column: 1 / -1;
+          background: #eaf7ed;
+          border-color: #cce8d2;
+        }
+
+        .passenger-fare-item.final span {
+          color: #438354;
+        }
+
+        .passenger-fare-item.final strong {
+          color: #18763a;
+          font-size: 17px;
+        }
+
+        .passenger-fare-note {
+          margin: 10px 0 0;
+          color: #71808e;
+          font-size: 8px;
+          line-height: 1.5;
+        }
+
         .booking-history-title {
           margin:
             5px 0 12px;
@@ -1019,6 +1095,14 @@ function MyBookings() {
           }
 
           .booking-detail-item.full {
+            grid-column: auto;
+          }
+
+          .passenger-fare-grid {
+            grid-template-columns: 1fr;
+          }
+
+          .passenger-fare-item.final {
             grid-column: auto;
           }
         }
@@ -1426,6 +1510,45 @@ function MyBookings() {
                       selectedBooking.bookingTime
                     )}
                   </strong>
+                </div>
+
+                <div className="passenger-fare-section">
+                  <h3>Fare Details</h3>
+
+                  <div className="passenger-fare-grid">
+                    <div className="passenger-fare-item">
+                      <span>Waiting Time</span>
+                      <strong>
+                        {Number(selectedBooking.waitingMinutes || 0)} min
+                      </strong>
+                    </div>
+
+                    <div className="passenger-fare-item">
+                      <span>Waiting Charge</span>
+                      <strong>
+                        {formatMoney(selectedBooking.waitingCharge || 0)}
+                      </strong>
+                    </div>
+
+                    <div className="passenger-fare-item final">
+                      <span>
+                        {selectedBooking.bookingStatus === "COMPLETED"
+                          ? "Final Fare"
+                          : "Current Fare"}
+                      </span>
+                      <strong>
+                        {formatMoney(
+                          selectedBooking.finalFare ??
+                            selectedBooking.estimatedFare ??
+                            0
+                        )}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <p className="passenger-fare-note">
+                    The final fare includes any applicable waiting charge.
+                  </p>
                 </div>
 
               </div>

@@ -13,6 +13,11 @@ function TrackBooking() {
   const [roadRoute, setRoadRoute] = useState([]);
   const [routeInfo, setRouteInfo] = useState(null);
   const [routeError, setRouteError] = useState("");
+  const [notification, setNotification] = useState(null);
+
+  const previousStatusRef = useRef(null);
+  const trackedBookingIdRef = useRef(null);
+  const notificationTimerRef = useRef(null);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -87,6 +92,36 @@ function TrackBooking() {
     }
   };
 
+  const getPassengerNotification = (status) => {
+    switch (status) {
+      case "ACCEPTED":
+        return { title: "Driver Accepted", message: "Your driver has accepted the booking.", icon: "✓", type: "success" };
+      case "DRIVER_ARRIVING":
+        return { title: "Driver Is On The Way", message: "Your driver is travelling to your pickup location.", icon: "🚕", type: "info" };
+      case "DRIVER_ARRIVED":
+        return { title: "Driver Has Arrived", message: "Your driver has arrived at the pickup location.", icon: "📍", type: "warning" };
+      case "ON_RIDE":
+        return { title: "Trip Started", message: "Your trip has started. Have a safe journey!", icon: "▶", type: "success" };
+      case "COMPLETED":
+        return { title: "Trip Completed", message: "Your trip has been completed successfully.", icon: "✓", type: "success" };
+      default:
+        return null;
+    }
+  };
+
+  const showPassengerNotification = (status) => {
+    const item = getPassengerNotification(status);
+    if (!item) return;
+
+    if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+    setNotification({ ...item, id: Date.now() });
+
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(null);
+      notificationTimerRef.current = null;
+    }, 6000);
+  };
+
   const loadTrackingData = async (showMainLoading = true) => {
     const token = getToken();
 
@@ -130,7 +165,18 @@ function TrackBooking() {
           new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
       );
 
-      const activeBooking = passengerBookings[0];
+      let activeBooking = passengerBookings[0];
+
+      // Keep the booking briefly trackable after completion so the passenger
+      // receives the final Trip Completed popup.
+      if (!activeBooking && trackedBookingIdRef.current) {
+        const justCompleted = myBookings.find(
+          (item) =>
+            Number(item.bookingId) === Number(trackedBookingIdRef.current) &&
+            item.bookingStatus === "COMPLETED"
+        );
+        if (justCompleted) activeBooking = justCompleted;
+      }
 
       if (!activeBooking) {
         setBooking(null);
@@ -139,6 +185,16 @@ function TrackBooking() {
           "You do not currently have an accepted or active booking to track."
         );
         return;
+      }
+
+      if (Number(trackedBookingIdRef.current) !== Number(activeBooking.bookingId)) {
+        trackedBookingIdRef.current = activeBooking.bookingId;
+        previousStatusRef.current = null;
+      }
+
+      if (previousStatusRef.current !== activeBooking.bookingStatus) {
+        showPassengerNotification(activeBooking.bookingStatus);
+        previousStatusRef.current = activeBooking.bookingStatus;
       }
 
       setBooking(activeBooking);
@@ -169,6 +225,10 @@ function TrackBooking() {
       }
 
       // Latest assigned driver GPS location
+      if (activeBooking.bookingStatus === "COMPLETED") {
+        return;
+      }
+
       try {
         const locationResponse = await fetch(
           `${API_BASE_URL}/driverlocations/driver/${activeBooking.assignedDriverId}/latest`,
@@ -557,6 +617,24 @@ function TrackBooking() {
 
   return (
     <>
+      {notification && (
+        <div className={`passenger-toast ${notification.type}`} role="status" aria-live="polite">
+          <div className="passenger-toast-icon">{notification.icon}</div>
+          <div className="passenger-toast-content">
+            <div className="passenger-toast-title">{notification.title}</div>
+            <p className="passenger-toast-message">{notification.message}</p>
+          </div>
+          <button
+            type="button"
+            className="passenger-toast-close"
+            aria-label="Close notification"
+            onClick={() => setNotification(null)}
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <style>{`
         .track-page {
           min-height: 100vh;
@@ -684,9 +762,39 @@ function TrackBooking() {
           font-size:9px; font-weight:700; cursor:pointer;
         }
         .tracking-refresh:hover { background:#153b5e; }
+
+        .passenger-toast {
+          position:fixed; top:22px; right:22px; z-index:99999;
+          width:min(380px, calc(100vw - 32px)); background:#fff;
+          border:1px solid #e2e7ec; border-radius:12px;
+          box-shadow:0 12px 35px rgba(11,41,70,.20);
+          padding:15px; display:flex; gap:12px; align-items:flex-start;
+          animation:toastSlideIn .25s ease-out;
+        }
+        .passenger-toast.success { border-left:5px solid #29935a; }
+        .passenger-toast.info { border-left:5px solid #24649f; }
+        .passenger-toast.warning { border-left:5px solid #d39b16; }
+        .passenger-toast-icon {
+          width:38px; height:38px; border-radius:50%; flex:0 0 38px;
+          display:flex; align-items:center; justify-content:center;
+          background:#f4f7fa; font-size:18px;
+        }
+        .passenger-toast-content { flex:1; min-width:0; }
+        .passenger-toast-title { margin:1px 0 5px; color:#0b2946; font-size:13px; font-weight:700; }
+        .passenger-toast-message { margin:0; color:#63717d; font-size:11px; line-height:1.5; }
+        .passenger-toast-close {
+          border:none; background:transparent; color:#7b8794;
+          cursor:pointer; font-size:18px; line-height:1; padding:0 2px;
+        }
+        @keyframes toastSlideIn {
+          from { opacity:0; transform:translateX(25px); }
+          to { opacity:1; transform:translateX(0); }
+        }
+
         @media(max-width:850px) {
           .track-grid { grid-template-columns:1fr; }
           .track-page { padding:20px; }
+          .passenger-toast { top:14px; right:16px; left:16px; width:auto; }
         }
       `}</style>
 

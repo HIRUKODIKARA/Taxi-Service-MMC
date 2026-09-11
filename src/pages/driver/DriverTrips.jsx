@@ -117,6 +117,16 @@ function DriverTrips() {
       .substring(0, 5);
   };
 
+  const formatMoney = (value) => {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return "—";
+
+    return `Rs. ${number.toLocaleString("en-LK", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
   const loadTrips = async () => {
     if (!user) {
       setError(
@@ -884,6 +894,69 @@ function DriverTrips() {
           line-height: 1.6;
         }
 
+        .driver-fare-panel {
+          grid-column: 1 / -1;
+          margin-top: 8px;
+          padding: 16px;
+          border: 1px solid #dce5ec;
+          border-radius: 9px;
+          background: #f8fafc;
+        }
+
+        .driver-fare-title {
+          margin: 0 0 12px;
+          color: #0b2946;
+          font-size: 12px;
+          font-weight: 800;
+        }
+
+        .driver-fare-grid {
+          display: grid;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
+        }
+
+        .driver-fare-item {
+          padding: 11px;
+          border-radius: 7px;
+          background: white;
+          border: 1px solid #e7ebef;
+        }
+
+        .driver-fare-item span {
+          display: block;
+          margin-bottom: 5px;
+          color: #8a959f;
+          font-size: 8px;
+        }
+
+        .driver-fare-item strong {
+          color: #0b2946;
+          font-size: 11px;
+        }
+
+        .driver-fare-item.earnings {
+          grid-column: 1 / -1;
+          background: #e8f5e9;
+          border-color: #cbe7d1;
+        }
+
+        .driver-fare-item.earnings span {
+          color: #438354;
+        }
+
+        .driver-fare-item.earnings strong {
+          color: #18763a;
+          font-size: 16px;
+        }
+
+        .driver-fare-note {
+          margin: 10px 0 0;
+          color: #7b8794;
+          font-size: 8px;
+          line-height: 1.5;
+        }
+
         .trip-action-area {
           margin-top: 18px;
           padding-top: 18px;
@@ -1445,6 +1518,47 @@ function DriverTrips() {
                       selectedTrip.bookingTime
                     )}
                   </strong>
+                </div>
+
+                <div className="driver-fare-panel">
+                  <h3 className="driver-fare-title">Fare Details</h3>
+
+                  <div className="driver-fare-grid">
+                    <div className="driver-fare-item">
+                      <span>WAITING TIME</span>
+                      <strong>
+                        {Number(selectedTrip.waitingMinutes || 0)} min
+                      </strong>
+                    </div>
+
+                    <div className="driver-fare-item">
+                      <span>WAITING CHARGE</span>
+                      <strong>
+                        {formatMoney(selectedTrip.waitingCharge || 0)}
+                      </strong>
+                    </div>
+
+                    {["ON_RIDE", "COMPLETED"].includes(
+                      selectedTrip.bookingStatus
+                    ) && (
+                      <div className="driver-fare-item earnings">
+                        <span>
+                          {selectedTrip.bookingStatus === "COMPLETED"
+                            ? "FINAL EARNINGS"
+                            : "ESTIMATED EARNINGS"}
+                        </span>
+                        <strong>
+                          {formatMoney(selectedTrip.driverShare)}
+                        </strong>
+                      </div>
+                    )}
+                  </div>
+
+                  <p className="driver-fare-note">
+                    The first 5 minutes of waiting are free. When the trip
+                    starts, your estimated earnings are shown. After the trip
+                    is completed, the amount is shown as final earnings.
+                  </p>
                 </div>
               </div>
 

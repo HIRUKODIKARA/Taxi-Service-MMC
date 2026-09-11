@@ -26,10 +26,18 @@ function PassengerNotifications() {
   };
 
   useEffect(() => {
-    loadNotifications();
+    loadNotifications(true);
+
+    const intervalId = setInterval(() => {
+      loadNotifications(false);
+    }, 5000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, []);
 
-  const loadNotifications = async () => {
+  const loadNotifications = async (showLoader = true) => {
     const token = getToken();
 
     if (!token) {
@@ -41,7 +49,10 @@ function PassengerNotifications() {
     }
 
     try {
-      setLoading(true);
+      if (showLoader) {
+        setLoading(true);
+      }
+
       setError("");
 
       const response = await fetch(
@@ -86,7 +97,9 @@ function PassengerNotifications() {
           "Unable to load notifications."
       );
     } finally {
-      setLoading(false);
+      if (showLoader) {
+        setLoading(false);
+      }
     }
   };
 
