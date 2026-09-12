@@ -1,0 +1,86 @@
+# MMC Taxi Service — full stack (MySQL + .NET API + Vite frontend)
+#
+# Start everything:   docker compose up
+# Stop:               docker compose down        (data is kept in the named volume)
+#
+# Notes / deliberate choices:
+#  - MySQL reuses the EXISTING, already-seeded volume `mmc-taxi-mysql-data`
+#    (schema, roles, permissions, admin login admin@mmc.local / Admin@123).
+#    The MYSQL_* env vars below only take effect on a *fresh* volume, so they
+#    match the existing credentials and are otherwise ignored.
+#  - The standalone `mmc-taxi-mysql` container also binds host port 3306.
+#    It is currently stopped — do NOT `docker start` it while compose is up,
+#    or the two will fight over the port / the same volume.
+#  - The API and frontend run straight from source (bind-mounted) so no image
+#    build is needed and your slow-network caches are reused:
+#      * API reuses your host NuGet cache (~/.nuget/packages).
+#      * Frontend reuses your host node_modules (glibc + node 20 → node:20-slim).
+#  - The browser calls the API at http://localhost:5171 (hardcoded in the React
+#    app), which works because port 5171 is published to the host.
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: mmc_root_pw
+      MYSQL_DATABASE: mmc_taxi_db
+      MYSQL_USER: mmc
+      MYSQL_PASSWORD: mmc_dev_pw
+    ports:
+      - "3306:3306"
+    volumes:
+      - mmc-taxi-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-pmmc_root_pw"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:10.0
+    restart: unless-stopped
+    working_dir: /workspace/MmcTaxiApi
+    # --no-launch-profile ignores launchSettings.json (which would bind
+    # localhost-only inside the container); ASPNETCORE_URLS binds all interfaces.
+    command: ["dotnet", "run", "--no-launch-profile"]
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:5171
+      # Point the API at the mysql service instead of localhost. This overrides
+      # ConnectionStrings:DefaultConnection from appsettings.json.
+      ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=mmc_taxi_db;User=mmc;Password=mmc_dev_pw;"
+    ports:
+      - "5171:5171"
+    volumes:
+      - ./MmcTaxiApi:/workspace/MmcTaxiApi
+      # Container builds its own bin/obj (don't reuse the host's).
+      - /workspace/MmcTaxiApi/bin
+      - /workspace/MmcTaxiApi/obj
+      # Reuse the host NuGet cache so restore doesn't re-download over the network.
+      - ${HOME}/.nuget/packages:/root/.nuget/packages
+      # Persist uploaded driver documents / vehicle photos across restarts.
+      - api-uploads:/workspace/MmcTaxiApi/Uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    image: node:20-slim
+    restart: unless-stopped
+    working_dir: /app
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5174", "--strictPort"]
+    ports:
+      - "5174:5174"
+    volumes:
+      # Bind the whole project; this reuses the host node_modules (no npm install).
+      - ./:/app
+    depends_on:
+      - api
+
+volumes:
+  # Pre-existing, already-seeded volume — must not be recreated.
+  mmc-taxi-mysql-data:
+    external: true
+  api-uploads:
