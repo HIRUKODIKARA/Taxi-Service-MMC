@@ -28,7 +28,7 @@ services:
       MYSQL_USER: mmc
       MYSQL_PASSWORD: mmc_dev_pw
     ports:
-      - "3307:3306"
+      - "3308:3306"
     volumes:
       - mmc-taxi-mysql-data:/var/lib/mysql
     healthcheck:
