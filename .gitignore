@@ -31,3 +31,4 @@ MmcTaxiApi/Uploads/
 
 # Local backend secrets
 MmcTaxiApi/appsettings.json
+.env

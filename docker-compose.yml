@@ -51,6 +51,13 @@ services:
       # Point the API at the mysql service instead of localhost. This overrides
       # ConnectionStrings:DefaultConnection from appsettings.json.
       ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=mmc_taxi_db;User=mmc;Password=mmc_dev_pw;"
+      # JWT config. appsettings.json is gitignored, so it does NOT reach a fresh
+      # deploy — without these the API throws "JWT Key is not configured" on
+      # startup and crash-loops. The key comes from .env (also gitignored) so the
+      # secret stays out of git; issuer/audience are not secret.
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env (see .env.example)}
+      Jwt__Issuer: MmcTaxiApi
+      Jwt__Audience: MmcTaxiClient
     ports:
       - "5171:5171"
     volumes:
