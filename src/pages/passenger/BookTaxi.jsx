@@ -3,7 +3,7 @@ import { MapContainer, Marker, TileLayer, useMap, useMapEvents } from "react-lea
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
-const API_BASE_URL = "http://localhost:5171/api";
+const API_BASE_URL = "/api";
 const MMC_NAME = "Makumbura Multimodal Center";
 const MMC_LOCATION = { lat: 6.8407003, lng: 79.9757581 };
 const SRI_LANKA_CENTER = [7.8731, 80.7718];

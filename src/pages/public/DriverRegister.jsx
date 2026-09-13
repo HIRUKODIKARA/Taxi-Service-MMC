@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
-const API_BASE_URL = "http://localhost:5171/api";
+const API_BASE_URL = "/api";
 
 const safeJson = async (response) => {
   const raw = await response.text();

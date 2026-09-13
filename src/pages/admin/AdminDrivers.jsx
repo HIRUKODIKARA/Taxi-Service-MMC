@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 function AdminDrivers() {
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
 
   const [drivers, setDrivers] = useState([]);
   const [vehicles, setVehicles] = useState([]);

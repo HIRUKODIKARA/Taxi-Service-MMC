@@ -5,7 +5,7 @@ import {
 } from "react";
 
 const API_BASE_URL =
-  "http://localhost:5171/api";
+  "/api";
 
 /* =========================================================
    AUTH

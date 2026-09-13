@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 function DriverNotifications() {
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
   const [notifications, setNotifications] =
     useState([]);
 

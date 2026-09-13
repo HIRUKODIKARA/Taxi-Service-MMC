@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 function PassengerProfile() {
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
 
   const [editing, setEditing] = useState(false);
   const [profile, setProfile] = useState({

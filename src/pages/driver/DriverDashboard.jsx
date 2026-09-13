@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 function DriverDashboard() {
   const navigate = useNavigate();
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
 
   const [driver, setDriver] = useState(null);
   const [status, setStatus] = useState("OFFLINE");

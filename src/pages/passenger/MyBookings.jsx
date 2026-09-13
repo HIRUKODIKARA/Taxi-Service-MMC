@@ -43,7 +43,7 @@ function MyBookings() {
   };
 
   const user = getStoredUser();
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
 
   const getHeaders = () => {
     const token = getToken();

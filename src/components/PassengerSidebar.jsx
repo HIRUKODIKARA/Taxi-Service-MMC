@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 
 function PassengerSidebar() {
   const navigate = useNavigate();
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
 
   const [profile, setProfile] = useState({
     fullName: "Passenger",

@@ -27,7 +27,7 @@ function TrackBooking() {
   const routeLineRef = useRef(null);
   const routeRequestRef = useRef(0);
 
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
 
   const getToken = () =>
     localStorage.getItem("token") ||

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 
 function DriverTrips() {
-  const API_BASE_URL = "http://localhost:5171/api";
+  const API_BASE_URL = "/api";
   const [filter, setFilter] = useState("All");
 
   const [driver, setDriver] = useState(null);

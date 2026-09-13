@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API_BASE_URL = "http://localhost:5171/api";
+const API_BASE_URL = "/api";
 
 const getToken = () =>
   localStorage.getItem("token") ||
