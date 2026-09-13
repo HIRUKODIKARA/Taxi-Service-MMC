@@ -70,7 +70,9 @@ services:
     image: node:20-slim
     restart: unless-stopped
     working_dir: /app
-    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5174", "--strictPort"]
+    # Reuse host node_modules if present; otherwise install first (fresh boxes,
+    # e.g. production, have no node_modules and would fail with "vite: not found").
+    command: ["sh", "-c", "[ -x node_modules/.bin/vite ] || npm install; exec npm run dev -- --host 0.0.0.0 --port 5174 --strictPort"]
     ports:
       - "5174:5174"
     volumes:
