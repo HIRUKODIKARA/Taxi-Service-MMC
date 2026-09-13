@@ -1,0 +1,74 @@
+# MMC Taxi Service — PRODUCTION stack.
+#
+#   docker compose -f docker-compose.prod.yml up -d --build
+#
+# How this differs from docker-compose.yml (which is DEV only):
+#   - frontend + api run from BUILT images (dotnet publish / vite build + nginx),
+#     not from bind-mounted source with dev servers.
+#   - api runs in ASPNETCORE_ENVIRONMENT=Production.
+#   - MySQL starts on a FRESH volume and seeds itself from db/init/*.sql on the
+#     first boot (the dev box's pre-seeded external volume does not exist here).
+#   - All secrets come from .env (copy .env.example -> .env and fill it in).
+#
+# Topology: your EXISTING external reverse proxy (nginx/Caddy) terminates TLS for
+# taxi.mmck.lk and forwards to the frontend container on host port ${APP_PORT}.
+# The frontend (nginx) serves the SPA and proxies /api to the api container, so
+# the browser is always same-origin (no CORS needed).
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?set MYSQL_ROOT_PASSWORD in .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-mmc_taxi_db}
+      MYSQL_USER: ${MYSQL_USER:-mmc}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?set MYSQL_PASSWORD in .env}
+    volumes:
+      - mmc-taxi-prod-db:/var/lib/mysql
+      # *.sql / *.sh here run ONCE, only while the data volume is empty.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    # Not published to the host — the API reaches it over the internal network.
+    # Uncomment to expose for admin access (use a firewall / SSH tunnel instead).
+    # ports:
+    #   - "3306:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  api:
+    build:
+      context: ./MmcTaxiApi
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__DefaultConnection: "Server=mysql;Port=3306;Database=${MYSQL_DATABASE:-mmc_taxi_db};User=${MYSQL_USER:-mmc};Password=${MYSQL_PASSWORD};"
+      # appsettings.json is gitignored, so these must be supplied here or the API
+      # crash-loops on startup. JWT_KEY comes from .env (keep it secret).
+      Jwt__Key: ${JWT_KEY:?set JWT_KEY in .env (see .env.example)}
+      Jwt__Issuer: ${JWT_ISSUER:-MmcTaxiApi}
+      Jwt__Audience: ${JWT_AUDIENCE:-MmcTaxiClient}
+    volumes:
+      # Persist uploaded driver documents / vehicle photos across restarts.
+      - api-uploads:/app/Uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+    restart: unless-stopped
+    # Published to the host so your external proxy can forward taxi.mmck.lk here.
+    ports:
+      - "${APP_PORT:-8080}:80"
+    depends_on:
+      - api
+
+volumes:
+  mmc-taxi-prod-db:
+  api-uploads:
