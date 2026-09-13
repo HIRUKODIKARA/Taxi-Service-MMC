@@ -14,7 +14,12 @@ export default defineConfig({
     // "/api" to the API on :5171 here.
     proxy: {
       '/api': {
-        target: 'http://localhost:5171',
+        // In docker-compose the API is a separate container, reachable at
+        // http://api:5171 (the service name) — NOT localhost, which inside the
+        // frontend container points at the frontend itself. Set
+        // API_PROXY_TARGET=http://api:5171 there. Falls back to localhost:5171
+        // for local (non-docker) dev where the API runs on the host.
+        target: process.env.API_PROXY_TARGET || 'http://localhost:5171',
         changeOrigin: true,
       },
     },

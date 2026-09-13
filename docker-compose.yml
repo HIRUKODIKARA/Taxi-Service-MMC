@@ -80,6 +80,11 @@ services:
     # Reuse host node_modules if present; otherwise install first (fresh boxes,
     # e.g. production, have no node_modules and would fail with "vite: not found").
     command: ["sh", "-c", "[ -x node_modules/.bin/vite ] || npm install; exec npm run dev -- --host 0.0.0.0 --port 5174 --strictPort"]
+    environment:
+      # The Vite dev server proxies "/api" to the API. Across containers the API
+      # is at http://api:5171 (service name), not localhost. Without this the
+      # proxy hits localhost inside THIS container and returns 502.
+      API_PROXY_TARGET: http://api:5171
     ports:
       - "5174:5174"
     volumes:
