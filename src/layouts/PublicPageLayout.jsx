@@ -8,7 +8,9 @@ function PublicPageLayout() {
       <style>{`
         .public-page-layout {
           min-height: 100vh;
+          width: 100%;
           background: #f4f7fa;
+          overflow-x: hidden;
         }
 
         .public-page-back-area {
@@ -16,9 +18,15 @@ function PublicPageLayout() {
           background: #f4f7fa;
         }
 
-        @media(max-width: 700px) {
+        @media (max-width: 700px) {
           .public-page-back-area {
-            padding: 15px 18px 0;
+            padding: 14px 16px 0;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .public-page-back-area {
+            padding: 12px 14px 0;
           }
         }
       `}</style>

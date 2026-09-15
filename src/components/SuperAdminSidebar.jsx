@@ -1,223 +1,478 @@
+import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 
 function SuperAdminSidebar() {
   const navigate = useNavigate();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("accessToken");
-    localStorage.removeItem("user");
+    [
+      "token",
+      "authToken",
+      "accessToken",
+      "user",
+    ].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
 
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("authToken");
-    sessionStorage.removeItem("accessToken");
-    sessionStorage.removeItem("user");
+    setMobileOpen(false);
 
-    navigate("/login", { replace: true });
+    navigate("/login", {
+      replace: true,
+    });
   };
 
   const menuClass = ({ isActive }) =>
-    isActive ? "sa-menu-link active" : "sa-menu-link";
+    isActive
+      ? "sa-menu-link active"
+      : "sa-menu-link";
+
+  const items = [
+    ["/super-admin/dashboard", "🏠 Dashboard"],
+    ["/super-admin/admins", "👨‍💼 Admin Management"],
+    ["/super-admin/operations", "🎧 Taxi Operations"],
+    ["/super-admin/users", "👥 Users"],
+    ["/super-admin/drivers", "🚖 Drivers"],
+    [
+      "/super-admin/driver-registration",
+      "➕ Driver Registration",
+    ],
+    [
+      "/super-admin/driver-verification",
+      "✅ Driver Verification",
+    ],
+    ["/super-admin/vehicles", "🚗 Vehicles"],
+    ["/super-admin/vehicle-types", "🚘 Vehicle Types"],
+    [
+      "/super-admin/operational-areas",
+      "📍 Operational Areas",
+    ],
+    [
+      "/super-admin/taxi-operator-areas",
+      "🗺️ Taxi Operator Areas",
+    ],
+    ["/super-admin/bookings", "📋 Bookings"],
+    [
+      "/super-admin/fare-management",
+      "💰 Fare Management",
+    ],
+    [
+      "/super-admin/permissions",
+      "🔐 Roles & Permissions",
+    ],
+    ["/super-admin/reports", "📊 Reports"],
+    [
+      "/super-admin/activity",
+      "🕒 Activity Monitoring",
+    ],
+    [
+      "/super-admin/settings",
+      "⚙️ System Settings",
+    ],
+  ];
 
   return (
     <>
       <style>{`
         .sa-sidebar {
-          position: fixed !important;
-          top: 0 !important;
-          left: 0 !important;
-          width: 285px !important;
-          height: 100vh !important;
-          background: #0b2946 !important;
-          display: flex !important;
-          flex-direction: column !important;
-          z-index: 1000 !important;
-          overflow-y: auto !important;
-          overflow-x: hidden !important;
-          font-family: Arial, Helvetica, sans-serif !important;
-          visibility: visible !important;
-          opacity: 1 !important;
+          position: fixed;
+          top: 0;
+          left: 0;
+
+          width: 285px;
+          height: 100vh;
+
+          background: #0b2946;
+
+          display: flex;
+          flex-direction: column;
+
+          z-index: 5000;
+
+          overflow-y: auto;
+          overflow-x: hidden;
+
+          font-family:
+            Arial,
+            Helvetica,
+            sans-serif;
+
+          transition: transform .25s ease;
         }
+
+        /* =========================
+           LOGO / HEADER
+        ========================= */
 
         .sa-logo-area {
           display: flex;
           align-items: center;
+          justify-content: space-between;
+
           gap: 12px;
+
           padding: 24px 22px;
-          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+
+          border-bottom:
+            1px solid rgba(255,255,255,.1);
+
           flex-shrink: 0;
+        }
+
+        .sa-logo-content {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+
+          min-width: 0;
         }
 
         .sa-logo {
           width: 48px;
           height: 48px;
+
           object-fit: contain;
+
           background: white;
+
           border-radius: 9px;
+
           padding: 4px;
+
+          flex-shrink: 0;
         }
 
         .sa-logo-area h3 {
           margin: 0 0 4px;
+
           color: white;
+
           font-size: 17px;
           font-weight: 800;
         }
 
         .sa-logo-area span {
           color: #f6c20d;
+
           font-size: 10px;
           font-weight: 700;
         }
 
+        /* =========================
+           MOBILE CLOSE BUTTON
+        ========================= */
+
+        .sa-sidebar-close {
+          display: none;
+
+          width: 34px;
+          height: 34px;
+
+          flex-shrink: 0;
+
+          border: none;
+          border-radius: 7px;
+
+          background:
+            rgba(255,255,255,.10);
+
+          color: white;
+
+          font-size: 23px;
+          line-height: 1;
+
+          cursor: pointer;
+        }
+
+        .sa-sidebar-close:hover {
+          background:
+            rgba(255,255,255,.18);
+        }
+
+        /* =========================
+           MENU
+        ========================= */
+
         .sa-menu {
           flex: 1;
+
           padding: 18px 12px;
+
           display: flex;
           flex-direction: column;
+
           gap: 5px;
         }
 
         .sa-menu-link {
           display: flex;
           align-items: center;
+
           gap: 10px;
+
           padding: 11px 13px;
+
           border-radius: 7px;
-          color: #d9e3ec !important;
-          text-decoration: none !important;
+
+          color: #d9e3ec;
+
+          text-decoration: none;
+
           font-size: 11px;
           font-weight: 600;
-          transition: 0.2s ease;
+
           white-space: nowrap;
+
+          transition: .2s;
         }
 
         .sa-menu-link:hover {
-          background: rgba(255, 255, 255, 0.08);
-          color: white !important;
+          background:
+            rgba(255,255,255,.08);
+
+          color: white;
         }
 
         .sa-menu-link.active {
           background: #f6c20d;
-          color: #0b2946 !important;
+
+          color: #0b2946;
+
           font-weight: 800;
         }
 
+        /* =========================
+           LOGOUT
+        ========================= */
+
         .sa-logout-btn {
           margin: 12px;
+
           padding: 11px 14px;
-          border: 1px solid rgba(255, 255, 255, 0.2);
+
+          border:
+            1px solid rgba(255,255,255,.2);
+
           border-radius: 7px;
+
           background: transparent;
+
           color: white;
+
           font-size: 11px;
           font-weight: 700;
+
           text-align: left;
+
           cursor: pointer;
+
           flex-shrink: 0;
         }
 
         .sa-logout-btn:hover {
-          background: rgba(255, 255, 255, 0.08);
+          background:
+            rgba(255,255,255,.08);
         }
 
-        @media (max-width: 1100px) {
+        /* =========================
+           MOBILE HAMBURGER
+        ========================= */
+
+        .sa-mobile-btn {
+          display: none;
+
+          position: fixed;
+
+          top: 14px;
+          left: 14px;
+
+          z-index: 10001;
+
+          width: 44px;
+          height: 44px;
+
+          border: none;
+          border-radius: 9px;
+
+          background: #f6c20d;
+
+          color: #0b2946;
+
+          font-size: 24px;
+          font-weight: 800;
+          line-height: 1;
+
+          cursor: pointer;
+
+          box-shadow:
+            0 3px 10px rgba(0,0,0,.15);
+        }
+
+        /* =========================
+           OVERLAY
+        ========================= */
+
+        .sa-overlay {
+          display: none;
+        }
+
+        /* =========================
+           TABLET
+        ========================= */
+
+        @media (
+          max-width: 1100px
+        ) and (
+          min-width: 761px
+        ) {
           .sa-sidebar {
-            width: 250px !important;
+            width: 250px;
+          }
+        }
+
+        /* =========================
+           MOBILE
+        ========================= */
+
+        @media (max-width: 760px) {
+
+          .sa-mobile-btn {
+            display: block;
+          }
+
+          .sa-sidebar {
+            width: min(285px, 84vw);
+
+            transform:
+              translateX(-100%);
+
+            z-index: 10000;
+
+            box-shadow:
+              5px 0 20px
+              rgba(0,0,0,.20);
+          }
+
+          .sa-sidebar.mobile-open {
+            transform:
+              translateX(0);
+          }
+
+          .sa-sidebar-close {
+            display: flex;
+
+            align-items: center;
+            justify-content: center;
+          }
+
+          .sa-overlay {
+            display: block;
+
+            position: fixed;
+
+            inset: 0;
+
+            background:
+              rgba(0,0,0,.45);
+
+            z-index: 9999;
           }
         }
       `}</style>
 
-      <aside className="sa-sidebar">
-        <div className="sa-logo-area">
-          <img
-            src="/logo.png"
-            alt="Makumbura MMC"
-            className="sa-logo"
-          />
+      {/* MOBILE HAMBURGER */}
 
-          <div>
-            <h3>MMC Taxi</h3>
-            <span>Super Admin</span>
+      {!mobileOpen && (
+        <button
+          type="button"
+          className="sa-mobile-btn"
+          onClick={() =>
+            setMobileOpen(true)
+          }
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+      )}
+
+      {/* DARK OVERLAY */}
+
+      {mobileOpen && (
+        <div
+          className="sa-overlay"
+          onClick={() =>
+            setMobileOpen(false)
+          }
+        />
+      )}
+
+      {/* SIDEBAR */}
+
+      <aside
+        className={`sa-sidebar ${
+          mobileOpen
+            ? "mobile-open"
+            : ""
+        }`}
+      >
+
+        {/* HEADER */}
+
+        <div className="sa-logo-area">
+
+          <div className="sa-logo-content">
+
+            <img
+              src="/logo.png"
+              alt="Makumbura MMC"
+              className="sa-logo"
+            />
+
+            <div>
+              <h3>MMC Taxi</h3>
+              <span>
+                Super Admin
+              </span>
+            </div>
+
           </div>
+
+          <button
+            type="button"
+            className="sa-sidebar-close"
+            onClick={() =>
+              setMobileOpen(false)
+            }
+            aria-label="Close menu"
+          >
+            ×
+          </button>
+
         </div>
 
+        {/* MENU */}
+
         <nav className="sa-menu">
-          <NavLink to="/super-admin/dashboard" className={menuClass}>
-            🏠 Dashboard
-          </NavLink>
 
-          <NavLink to="/super-admin/admins" className={menuClass}>
-            👨‍💼 Admin Management
-          </NavLink>
+          {items.map(
+            ([path, label]) => (
+              <NavLink
+                key={path}
+                to={path}
+                className={menuClass}
+                onClick={() =>
+                  setMobileOpen(false)
+                }
+              >
+                {label}
+              </NavLink>
+            )
+          )}
 
-          <NavLink to="/super-admin/operations" className={menuClass}>
-            🎧 Taxi Operations
-          </NavLink>
-
-          <NavLink to="/super-admin/users" className={menuClass}>
-            👥 Users
-          </NavLink>
-
-          <NavLink to="/super-admin/drivers" className={menuClass}>
-            🚖 Drivers
-          </NavLink>
-
-          <NavLink
-            to="/super-admin/driver-registration"
-            className={menuClass}
-          >
-            ➕ Driver Registration
-          </NavLink>
-
-          <NavLink
-            to="/super-admin/driver-verification"
-            className={menuClass}
-          >
-            ✅ Driver Verification
-          </NavLink>
-
-          <NavLink to="/super-admin/vehicles" className={menuClass}>
-            🚗 Vehicles
-          </NavLink>
-
-          <NavLink to="/super-admin/vehicle-types" className={menuClass}>
-            🚘 Vehicle Types
-          </NavLink>
-
-          <NavLink to="/super-admin/operational-areas" className={menuClass}>
-            📍 Operational Areas
-          </NavLink>
-
-          <NavLink to="/super-admin/taxi-operator-areas" className={menuClass}>
-            🗺️ Taxi Operator Areas
-          </NavLink>
-
-          <NavLink to="/super-admin/bookings" className={menuClass}>
-            📋 Bookings
-          </NavLink>
-
-          <NavLink to="/super-admin/fare-management" className={menuClass}>
-            💰 Fare Management
-          </NavLink>
-
-          <NavLink to="/super-admin/permissions" className={menuClass}>
-            🔐 Roles & Permissions
-          </NavLink>
-
-          <NavLink to="/super-admin/reports" className={menuClass}>
-            📊 Reports
-          </NavLink>
-
-          <NavLink to="/super-admin/activity" className={menuClass}>
-            🕒 Activity Monitoring
-          </NavLink>
-
-          <NavLink to="/super-admin/settings" className={menuClass}>
-            ⚙️ System Settings
-          </NavLink>
         </nav>
+
+        {/* LOGOUT */}
 
         <button
           type="button"
@@ -226,6 +481,7 @@ function SuperAdminSidebar() {
         >
           ↪ Logout
         </button>
+
       </aside>
     </>
   );

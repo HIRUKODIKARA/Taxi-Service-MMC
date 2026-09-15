@@ -4,9 +4,13 @@ function Home() {
   return (
     <>
       <style>{`
+        * {
+          box-sizing: border-box;
+        }
 
         .home-page {
           width: 100%;
+          overflow-x: hidden;
           background: #ffffff;
           font-family: Arial, Helvetica, sans-serif;
         }
@@ -17,9 +21,9 @@ function Home() {
           margin: auto;
         }
 
-        /* =========================
-           HERO
-        ========================= */
+        /* =====================================
+           HERO SECTION
+        ===================================== */
 
         .home-hero {
           position: relative;
@@ -89,7 +93,7 @@ function Home() {
 
           margin: 0 0 30px;
 
-          color: rgba(255,255,255,0.92);
+          color: rgba(255, 255, 255, 0.92);
 
           font-size: 17px;
           line-height: 1.7;
@@ -101,7 +105,9 @@ function Home() {
         }
 
         .primary-btn {
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
 
           background: #ffc107;
           color: #111;
@@ -114,6 +120,8 @@ function Home() {
 
           font-weight: 700;
           font-size: 14px;
+
+          transition: 0.2s;
         }
 
         .primary-btn:hover {
@@ -121,7 +129,9 @@ function Home() {
         }
 
         .outline-btn {
-          display: inline-block;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
 
           border: 1px solid white;
 
@@ -135,6 +145,8 @@ function Home() {
 
           font-weight: 700;
           font-size: 14px;
+
+          transition: 0.2s;
         }
 
         .outline-btn:hover {
@@ -142,10 +154,9 @@ function Home() {
           color: #0b2946;
         }
 
-
-        /* =========================
+        /* =====================================
            FEATURES
-        ========================= */
+        ===================================== */
 
         .features-section {
           background: white;
@@ -165,7 +176,7 @@ function Home() {
 
           border-radius: 12px;
 
-          box-shadow: 0 10px 30px rgba(0,0,0,0.12);
+          box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
 
           overflow: hidden;
         }
@@ -217,10 +228,9 @@ function Home() {
           line-height: 1.6;
         }
 
-
-        /* =========================
+        /* =====================================
            SERVICES
-        ========================= */
+        ===================================== */
 
         .services-home {
           padding: 25px 0 90px;
@@ -284,7 +294,7 @@ function Home() {
 
           border-color: #ffc107;
 
-          box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
         }
 
         .service-icon {
@@ -332,10 +342,9 @@ function Home() {
           font-weight: 700;
         }
 
-
-        /* =========================
+        /* =====================================
            CTA
-        ========================= */
+        ===================================== */
 
         .home-cta {
           padding: 70px 20px;
@@ -357,17 +366,20 @@ function Home() {
         .home-cta p {
           margin: 0 0 25px;
 
-          color: rgba(255,255,255,0.75);
+          color: rgba(255, 255, 255, 0.75);
 
           font-size: 14px;
         }
 
-
-        /* =========================
-           RESPONSIVE
-        ========================= */
+        /* =====================================
+           TABLET
+        ===================================== */
 
         @media (max-width: 900px) {
+
+          .home-container {
+            width: 92%;
+          }
 
           .features-box,
           .services-grid {
@@ -378,24 +390,243 @@ function Home() {
             font-size: 46px;
           }
 
+          .feature-card:nth-child(2) {
+            border-right: none;
+          }
+
+          .feature-card:nth-child(1),
+          .feature-card:nth-child(2) {
+            border-bottom: 1px solid #eeeeee;
+          }
         }
+
+        /* =====================================
+           MOBILE
+        ===================================== */
 
         @media (max-width: 600px) {
 
+          .home-container {
+            width: 92%;
+          }
+
+          /* HERO */
+
           .home-hero {
-            min-height: 520px;
+            min-height: 550px;
+
+            background-size: cover;
+            background-position: center center;
+
+            display: flex;
+            align-items: center;
+          }
+
+          .home-overlay {
+            background: linear-gradient(
+              90deg,
+              rgba(5, 21, 37, 0.92),
+              rgba(5, 21, 37, 0.72),
+              rgba(5, 21, 37, 0.38)
+            );
+          }
+
+          .hero-content {
+            width: 92%;
+            margin: auto;
           }
 
           .hero-text {
-            text-align: center;
+            width: 100%;
+            max-width: 100%;
+
+            text-align: left;
+          }
+
+          .hero-label {
+            padding: 8px 14px;
+
+            margin-bottom: 18px;
+
+            font-size: 11px;
           }
 
           .hero-text h1 {
-            font-size: 38px;
+            margin: 0 0 18px;
+
+            font-size: 39px;
+            line-height: 1.08;
+          }
+
+          .hero-text p {
+            width: 100%;
+            max-width: 100%;
+
+            margin: 0 0 24px;
+
+            font-size: 14px;
+            line-height: 1.6;
+          }
+
+          .hero-buttons {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+
+            gap: 10px;
+          }
+
+          .primary-btn,
+          .outline-btn {
+            padding: 11px 19px;
+
+            font-size: 12px;
+
+            text-align: center;
+          }
+
+          /* FEATURES */
+
+          .features-section {
+            padding-bottom: 50px;
+          }
+
+          .features-box {
+            margin-top: -30px;
+
+            grid-template-columns: repeat(2, 1fr);
+
+            border-radius: 10px;
+          }
+
+          .feature-card {
+            padding: 22px 12px;
+
+            border-right: 1px solid #eeeeee;
+            border-bottom: 1px solid #eeeeee;
+          }
+
+          .feature-card:nth-child(2n) {
+            border-right: none;
+          }
+
+          .feature-card:nth-child(3),
+          .feature-card:nth-child(4) {
+            border-bottom: none;
+          }
+
+          .feature-icon {
+            width: 42px;
+            height: 42px;
+
+            margin-bottom: 12px;
+
+            font-size: 19px;
+          }
+
+          .feature-card h3 {
+            font-size: 13px;
+          }
+
+          .feature-card p {
+            font-size: 11px;
+            line-height: 1.5;
+          }
+
+          /* SERVICES */
+
+          .services-home {
+            padding: 20px 0 55px;
+          }
+
+          .section-title {
+            margin-bottom: 28px;
+          }
+
+          .section-title h2 {
+            font-size: 27px;
+          }
+
+          .section-title p {
+            font-size: 12px;
+            line-height: 1.5;
+          }
+
+          .services-grid {
+            grid-template-columns: repeat(2, 1fr);
+
+            gap: 12px;
+          }
+
+          .service-home-card {
+            padding: 22px 12px;
+          }
+
+          .service-icon {
+            width: 42px;
+            height: 42px;
+
+            margin-bottom: 12px;
+
+            font-size: 19px;
+          }
+
+          .service-home-card h3 {
+            font-size: 14px;
+          }
+
+          .service-home-card p {
+            min-height: auto;
+
+            font-size: 11px;
+            line-height: 1.5;
+          }
+
+          .service-home-card a {
+            font-size: 11px;
+          }
+
+          /* CTA */
+
+          .home-cta {
+            padding: 50px 18px;
+          }
+
+          .home-cta h2 {
+            font-size: 27px;
+          }
+
+          .home-cta p {
+            font-size: 12px;
+            line-height: 1.6;
+          }
+        }
+
+        /* =====================================
+           VERY SMALL MOBILE
+        ===================================== */
+
+        @media (max-width: 380px) {
+
+          .home-hero {
+            min-height: 530px;
+          }
+
+          .hero-text h1 {
+            font-size: 34px;
+          }
+
+          .hero-text p {
+            font-size: 13px;
           }
 
           .hero-buttons {
             flex-direction: column;
+          }
+
+          .hero-buttons .primary-btn,
+          .hero-buttons .outline-btn {
+            width: 100%;
           }
 
           .features-box,
@@ -408,13 +639,24 @@ function Home() {
             border-bottom: 1px solid #eeeeee;
           }
 
-        }
+          .feature-card:nth-child(3) {
+            border-bottom: 1px solid #eeeeee;
+          }
 
+          .feature-card:last-child {
+            border-bottom: none;
+          }
+
+          .service-home-card {
+            padding: 25px 16px;
+          }
+        }
       `}</style>
 
       <main className="home-page">
 
-        {/* HERO SECTION */}
+        {/* ================= HERO ================= */}
+
         <section className="home-hero">
 
           <div className="home-overlay"></div>
@@ -424,7 +666,7 @@ function Home() {
             <div className="hero-text">
 
               <span className="hero-label">
-                Makumbura Multimodal Centre
+                Makumbura Multimodal Center
               </span>
 
               <h1>
@@ -434,7 +676,7 @@ function Home() {
               </h1>
 
               <p>
-                Book a reliable taxi from Makumbura Multimodal Centre
+                Book a reliable taxi from Makumbura Multimodal Center
                 and travel safely and comfortably to your destination.
               </p>
 
@@ -462,8 +704,8 @@ function Home() {
 
         </section>
 
+        {/* ================= FEATURES ================= */}
 
-        {/* FEATURES */}
         <section className="features-section">
 
           <div className="home-container">
@@ -471,46 +713,59 @@ function Home() {
             <div className="features-box">
 
               <div className="feature-card">
-                <div className="feature-icon">⚡</div>
+
+                <div className="feature-icon">
+                  ⚡
+                </div>
 
                 <h3>Easy Booking</h3>
 
                 <p>
                   Book your taxi in just a few simple steps.
                 </p>
+
               </div>
 
-
               <div className="feature-card">
-                <div className="feature-icon">🛡️</div>
+
+                <div className="feature-icon">
+                  🛡️
+                </div>
 
                 <h3>Safe & Secure</h3>
 
                 <p>
                   Travel with registered and verified drivers.
                 </p>
+
               </div>
 
-
               <div className="feature-card">
-                <div className="feature-icon">🚕</div>
+
+                <div className="feature-icon">
+                  🚕
+                </div>
 
                 <h3>Multiple Vehicles</h3>
 
                 <p>
                   Choose from cars, three-wheelers and bikes.
                 </p>
+
               </div>
 
-
               <div className="feature-card">
-                <div className="feature-icon">☎️</div>
+
+                <div className="feature-icon">
+                  ☎️
+                </div>
 
                 <h3>Taxi Operations</h3>
 
                 <p>
                   Get support through Makumbura Taxi Operations.
                 </p>
+
               </div>
 
             </div>
@@ -519,15 +774,17 @@ function Home() {
 
         </section>
 
+        {/* ================= SERVICES ================= */}
 
-        {/* SERVICES */}
         <section className="services-home">
 
           <div className="home-container">
 
             <div className="section-title">
 
-              <h2>Our Services</h2>
+              <h2>
+                Our Services
+              </h2>
 
               <div className="title-line"></div>
 
@@ -537,14 +794,17 @@ function Home() {
 
             </div>
 
-
             <div className="services-grid">
 
               <div className="service-home-card">
 
-                <div className="service-icon">🚗</div>
+                <div className="service-icon">
+                  🚗
+                </div>
 
-                <h3>Car Service</h3>
+                <h3>
+                  Car Service
+                </h3>
 
                 <p>
                   Comfortable transportation for individual and
@@ -557,12 +817,15 @@ function Home() {
 
               </div>
 
-
               <div className="service-home-card">
 
-                <div className="service-icon">🛺</div>
+                <div className="service-icon">
+                  🛺
+                </div>
 
-                <h3>Three Wheeler</h3>
+                <h3>
+                  Three Wheeler
+                </h3>
 
                 <p>
                   Affordable and convenient transportation for
@@ -575,12 +838,15 @@ function Home() {
 
               </div>
 
-
               <div className="service-home-card">
 
-                <div className="service-icon">🏍️</div>
+                <div className="service-icon">
+                  🏍️
+                </div>
 
-                <h3>Bike Service</h3>
+                <h3>
+                  Bike Service
+                </h3>
 
                 <p>
                   Quick transportation for individual passengers.
@@ -592,12 +858,15 @@ function Home() {
 
               </div>
 
-
               <div className="service-home-card">
 
-                <div className="service-icon">📞</div>
+                <div className="service-icon">
+                  📞
+                </div>
 
-                <h3>Operations Booking</h3>
+                <h3>
+                  Operations Booking
+                </h3>
 
                 <p>
                   Book a taxi through Makumbura Taxi Operations.
@@ -615,8 +884,8 @@ function Home() {
 
         </section>
 
+        {/* ================= CTA ================= */}
 
-        {/* CTA */}
         <section className="home-cta">
 
           <div className="home-container">

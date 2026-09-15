@@ -729,11 +729,11 @@ function BookTaxi() {
         .booking-mode-wrap{grid-column:1/-1}.booking-modes{display:grid;grid-template-columns:1fr 1fr;gap:10px}.booking-mode{border:1px solid #dce3e9;background:#f8fafc;border-radius:8px;padding:13px;text-align:left;cursor:pointer;color:#0b2946}.booking-mode strong{display:block;font-size:11px;margin-bottom:4px}.booking-mode span{font-size:9px;color:#7a8792;line-height:1.45}.booking-mode.active{border-color:#f6c20d;background:#fff9dc}.now-note{margin-top:9px;padding:10px 12px;border-radius:7px;background:#eef6ff;color:#536f86;font-size:9px;line-height:1.5}
         .picker{grid-column:1/-1;border:1px solid #e1e7ec;border-radius:9px;padding:14px;background:#fbfcfd}.picker-title{margin:0 0 5px;color:#0b2946;font-size:11px;font-weight:800}.picker-help{margin:0 0 10px;color:#7a8792;font-size:9px;line-height:1.5}
         .search-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-bottom:9px}.search-btn,.current-btn,.confirm-location-btn{border:0;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer}.search-btn{padding:0 15px;background:#0b2946;color:#fff}.current-btn{width:100%;padding:10px 12px;margin-bottom:10px;background:#eef6ff;border:1px solid #d7e9f8;color:#0b2946}.search-btn:disabled,.current-btn:disabled,.confirm-location-btn:disabled{opacity:.55;cursor:not-allowed}
-        .results{margin-bottom:10px;border:1px solid #e0e6eb;border-radius:7px;overflow:hidden;background:#fff}.result{display:block;width:100%;border:0;border-bottom:1px solid #edf0f2;padding:10px 11px;background:#fff;text-align:left;color:#53616e;font-size:9px;line-height:1.45;cursor:pointer}.result:hover{background:#fff9dc}
+        .autocomplete-wrap{position:relative;margin-bottom:9px}.autocomplete-wrap .search-row{margin-bottom:0}.results{position:absolute;top:calc(100% + 5px);left:0;right:0;z-index:3000;max-height:250px;overflow-y:auto;border:1px solid #d9e0e6;border-radius:8px;background:#fff;box-shadow:0 10px 28px rgba(11,41,70,.16)}.result{display:flex;align-items:flex-start;gap:9px;width:100%;border:0;border-bottom:1px solid #edf0f2;padding:11px 12px;background:#fff;text-align:left;color:#53616e;font-size:9px;line-height:1.45;cursor:pointer}.result:last-child{border-bottom:0}.result:hover{background:#fff9dc}.result-pin{flex:0 0 auto;font-size:13px;line-height:1.2}.result-text{min-width:0;overflow-wrap:anywhere}
         .location-map{height:310px;width:100%;border-radius:8px;border:1px solid #dfe5ea;z-index:1}.selected-card{margin-top:10px;padding:12px;border:1px solid #dbe5ec;border-radius:7px;background:#fff}.selected-card strong{display:block;margin-bottom:5px;color:#0b2946;font-size:10px}.selected-card p{margin:0 0 7px;color:#667786;font-size:9px;line-height:1.5}.selected-card small{color:#8a98a5;font-size:8px}.confirm-location-btn{width:100%;margin-top:10px;padding:11px 12px;background:#f6c20d;color:#0b2946}.confirmed-badge{margin-top:8px;padding:8px 10px;border-radius:6px;background:#eaf7ed;color:#18763a;font-size:9px;font-weight:700;text-align:center}
         .submit{width:100%;margin-top:20px;border:0;padding:12px;border-radius:6px;background:#f6c20d;color:#0b2946;font-size:11px;font-weight:800;cursor:pointer}.submit:disabled{opacity:.65}.user{margin-bottom:18px;padding:12px 14px;background:#f8fafc;border:1px solid #e4e9ed;border-radius:7px}.user strong{display:block;color:#0b2946;font-size:11px}.user span{color:#7a8792;font-size:9px}.error{margin-bottom:18px;padding:12px 14px;background:#fff1f1;border:1px solid #efc6c6;border-radius:7px;color:#a43b3b;font-size:10px}
         .vehicle{padding:14px;margin-bottom:10px;background:#f8fafc;border:1px solid #e4e9ed;border-radius:8px;cursor:pointer;transition:.15s}.vehicle:hover{border-color:#f6c20d}.vehicle.selected{border-color:#f6c20d;background:#fff9dc;box-shadow:0 0 0 1px #f6c20d inset}.vehicle strong{color:#0b2946;font-size:11px}.vehicle p{margin:5px 0 0;color:#7a8792;font-size:9px}.fare-price{margin-top:8px!important;color:#0b2946!important;font-size:14px!important;font-weight:800}.old-fare{text-decoration:line-through;color:#8a98a5;margin-right:7px}.promo{margin-top:6px;padding:7px 8px;border-radius:6px;background:#eaf7ed;color:#18763a;font-size:8px;font-weight:700}.distance-box{margin:0 0 12px;padding:12px;border-radius:8px;background:#eef6ff;color:#0b2946;font-size:10px;line-height:1.55}.fare-loading{margin:0 0 12px;padding:11px;border-radius:7px;background:#fff9dc;color:#775e00;font-size:9px}.fare-error{margin:0 0 12px;padding:11px;border-radius:7px;background:#fff1f1;color:#a43b3b;font-size:9px}.note{margin-top:17px;padding:13px;background:#eef6ff;border-radius:7px;color:#60758a;font-size:10px;line-height:1.6}.confirm{margin-top:20px;padding:18px;background:#eaf7ed;border:1px solid #cce8d2;border-radius:9px}.confirm h3{margin:0 0 10px;color:#18763a;font-size:14px}.confirm p{margin:6px 0;color:#53616e;font-size:10px}
-        @media(max-width:850px){.container,.grid,.directions,.booking-modes{grid-template-columns:1fr}.full,.picker,.booking-mode-wrap{grid-column:auto}.book-taxi-page{padding:20px}}
+        @media(max-width:850px){.container,.grid,.directions,.booking-modes{grid-template-columns:1fr}.full,.picker,.booking-mode-wrap{grid-column:auto}.book-taxi-page{padding:20px}.search-row{grid-template-columns:1fr auto}.results{max-height:220px}}@media(max-width:520px){.book-taxi-page{padding:16px 12px}.card{padding:16px}.search-row{grid-template-columns:1fr}.search-btn{padding:11px 15px}.location-map{height:280px}.results{max-height:210px}}
       `}</style>
 
       <main className="book-taxi-page">
@@ -812,7 +812,8 @@ function BookTaxi() {
                     Type at least 2 letters to see location suggestions automatically. You can also use your current location or click the exact point on the map.
                   </p>
 
-                  <div className="search-row">
+                  <div className="autocomplete-wrap">
+                    <div className="search-row">
                     <input
                       value={searchText}
                       onChange={(e) => {
@@ -851,6 +852,18 @@ function BookTaxi() {
                     >
                       {searching ? "Searching..." : "Search"}
                     </button>
+                    </div>
+
+                    {searchResults.length > 0 && (
+                      <div className="results">
+                        {searchResults.map((result) => (
+                          <button type="button" className="result" key={result.place_id} onClick={() => selectLocation(result.lat, result.lon, result.display_name)}>
+                            <span className="result-pin">📍</span>
+                            <span className="result-text">{result.display_name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {searchText.trim().length === 1 && (
@@ -867,16 +880,6 @@ function BookTaxi() {
                   >
                     {locating ? "Getting Current Location..." : "📍 Use Current Location"}
                   </button>
-
-                  {searchResults.length > 0 && (
-                    <div className="results">
-                      {searchResults.map((result) => (
-                        <button type="button" className="result" key={result.place_id} onClick={() => selectLocation(result.lat, result.lon, result.display_name)}>
-                          {result.display_name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
 
                   <LocationMap
                     position={selectedLocation ? [selectedLocation.lat, selectedLocation.lng] : null}

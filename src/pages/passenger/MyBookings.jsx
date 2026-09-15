@@ -213,35 +213,9 @@ function MyBookings() {
     return vehicle?.typeName || "—";
   };
 
-  const getDriverName = (
-    driverId
-  ) => {
-    if (!driverId) {
-      return "Not Assigned";
-    }
-
-    const driver =
-      drivers.find(
-        (item) =>
-          Number(item.driverId) ===
-          Number(driverId)
-      );
-
-    if (!driver) {
-      return "Assigned Driver";
-    }
-
-    const driverUser =
-      users.find(
-        (item) =>
-          Number(item.userId) ===
-          Number(driver.userId)
-      );
-
-    return (
-      driverUser?.fullName ||
-      "Assigned Driver"
-    );
+  const getDriverName = (booking) => {
+    if (!booking?.assignedDriverId) return "Not Assigned";
+    return booking.driverName || "Assigned Driver";
   };
 
   const getFilterCategory = (
@@ -1073,6 +1047,43 @@ function MyBookings() {
           }
         }
 
+        /* Mobile responsive booking list */
+        @media(max-width: 700px) {
+          .my-bookings-page { padding: 76px 14px 20px; overflow-x: hidden; }
+          .my-bookings-page h1 { font-size: 23px; }
+          .booking-summary { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 9px; }
+          .booking-summary-card { padding: 12px; min-width: 0; }
+          .booking-filter-bar { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 5px; }
+          .booking-filter-bar button { flex: 0 0 auto; }
+          .booking-table-card { background: transparent; border: 0; overflow: visible; }
+          .booking-table-wrapper { overflow: visible; }
+          .passenger-booking-table { min-width: 0; width: 100%; display: block; }
+          .passenger-booking-table thead { display: none; }
+          .passenger-booking-table tbody { display: grid; gap: 12px; }
+          .passenger-booking-table tr { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px; background: white; border: 1px solid #e2e7ec; border-radius: 10px; box-shadow: 0 3px 12px rgba(11,41,70,.05); }
+          .passenger-booking-table td { display: block; padding: 0; border: 0; min-width: 0; font-size: 10px; overflow-wrap: anywhere; }
+          .passenger-booking-table td::before { display: block; margin-bottom: 4px; color: #8a959f; font-size: 7px; font-weight: 700; text-transform: uppercase; }
+          .passenger-booking-table td:nth-child(1)::before { content: "Booking ID"; }
+          .passenger-booking-table td:nth-child(2)::before { content: "Date"; }
+          .passenger-booking-table td:nth-child(3)::before { content: "Pickup"; }
+          .passenger-booking-table td:nth-child(4)::before { content: "Destination"; }
+          .passenger-booking-table td:nth-child(5)::before { content: "Vehicle"; }
+          .passenger-booking-table td:nth-child(6)::before { content: "Driver"; }
+          .passenger-booking-table td:nth-child(7)::before { content: "Status"; }
+          .passenger-booking-table td:nth-child(8)::before { content: "Action"; }
+          .passenger-booking-table td:nth-child(3), .passenger-booking-table td:nth-child(4) { grid-column: 1 / -1; padding: 9px; background: #f8fafc; border-radius: 7px; }
+          .passenger-booking-view { width: 100%; padding: 9px 10px; }
+          .live-ride-card { padding: 14px; }
+          .live-ride-top { flex-direction: column; gap: 9px; }
+          .live-indicator { align-self: flex-start; }
+          .ride-progress { display: flex; overflow-x: auto; gap: 8px; padding-bottom: 6px; }
+          .ride-step { flex: 0 0 86px; }
+          .booking-modal-overlay { padding: 10px; align-items: flex-end; }
+          .booking-modal { max-height: 92vh; border-radius: 14px 14px 0 0; }
+          .booking-modal-header { padding: 16px; border-radius: 14px 14px 0 0; }
+          .booking-modal-body { padding: 14px; }
+        }
+
         @media(max-width: 550px) {
           .booking-summary,
           .booking-detail-grid {
@@ -1170,7 +1181,7 @@ function MyBookings() {
               </div>
               <div className="live-info">
                 <span>Driver</span>
-                <strong>{getDriverName(activeBooking.assignedDriverId)}</strong>
+                <strong>{getDriverName(activeBooking)}</strong>
               </div>
             </div>
 
@@ -1491,6 +1502,19 @@ function MyBookings() {
                     )}
                   </strong>
                 </div>
+
+                {selectedBooking.assignedDriverId && (
+                  <>
+                    <div className="booking-detail-item">
+                      <span>Driver Phone</span>
+                      <strong>{selectedBooking.driverPhone || "—"}</strong>
+                    </div>
+                    <div className="booking-detail-item">
+                      <span>Vehicle Registration</span>
+                      <strong>{selectedBooking.vehicleRegistrationNumber || "—"}</strong>
+                    </div>
+                  </>
+                )}
 
                 <div className="booking-detail-item">
                   <span>Date</span>

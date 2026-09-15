@@ -475,8 +475,15 @@ function AdminLayout() {
         }
 
         @media (max-width: 760px) {
+          .admin-main-content {
+            margin-left: 0;
+            width: 100%;
+            min-width: 0;
+            overflow-x: hidden;
+          }
+
           .admin-back-area {
-            padding: 18px 18px 0;
+            padding: 72px 16px 0;
           }
 
           .sa-page {
@@ -498,6 +505,7 @@ function AdminLayout() {
 
           .sa-input {
             width: 100%;
+            min-width: 0;
           }
         }
       `}</style>

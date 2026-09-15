@@ -724,14 +724,51 @@ function DriverTrips() {
         }
 
         .driver-table-wrapper {
+          width: 100%;
+          max-width: 100%;
           overflow-x: auto;
+          overflow-y: hidden;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: thin;
         }
 
         .driver-trips-table {
           width: 100%;
-          border-collapse: collapse;
           min-width: 1050px;
+          border-collapse: collapse;
+          table-layout: auto;
         }
+
+        .driver-trips-table th,
+        .driver-trips-table td {
+          white-space: normal;
+          overflow-wrap: break-word;
+          vertical-align: middle;
+        }
+
+        .driver-trips-table th:nth-child(1), .driver-trips-table td:nth-child(1) { min-width: 80px; }
+        .driver-trips-table th:nth-child(2), .driver-trips-table td:nth-child(2) { min-width: 120px; }
+        .driver-trips-table th:nth-child(3), .driver-trips-table td:nth-child(3) { min-width: 120px; white-space: nowrap; }
+        .driver-trips-table th:nth-child(4), .driver-trips-table td:nth-child(4) { min-width: 230px; max-width: 280px; line-height: 1.4; }
+        .driver-trips-table th:nth-child(5), .driver-trips-table td:nth-child(5) { min-width: 230px; max-width: 280px; line-height: 1.4; }
+        .driver-trips-table th:nth-child(6), .driver-trips-table td:nth-child(6) { min-width: 100px; white-space: nowrap; }
+        .driver-trips-table th:nth-child(7), .driver-trips-table td:nth-child(7) { min-width: 110px; }
+        .driver-trips-table th:nth-child(8), .driver-trips-table td:nth-child(8) { min-width: 80px; }
+
+        .driver-mobile-trip-list { display: none; }
+
+        .driver-mobile-trip-card {
+          background: white;
+          border: 1px solid #e2e7ec;
+          border-radius: 12px;
+          padding: 15px;
+        }
+
+        .driver-mobile-trip-top { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:12px; }
+        .driver-mobile-trip-row { display:grid; grid-template-columns:90px minmax(0,1fr); gap:10px; padding:8px 0; border-top:1px solid #edf0f3; }
+        .driver-mobile-trip-row span { color:#7b8794; font-size:9px; font-weight:800; }
+        .driver-mobile-trip-row strong { color:#53616e; font-size:10px; line-height:1.45; overflow-wrap:anywhere; min-width:0; }
+        .driver-mobile-trip-card .driver-trip-view { width:100%; margin-top:12px; }
 
         .driver-trips-table th {
           background: #0b2946;
@@ -1129,8 +1166,14 @@ function DriverTrips() {
 
         @media(max-width: 700px) {
           .driver-trips-page {
-            padding: 18px;
+            padding: 16px 8px 24px;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
           }
+
+          .driver-trips-header { padding-left: 4px; padding-right: 4px; }
+          .driver-trips-header h1 { font-size: 23px; }
 
           .driver-trip-summary,
           .trip-detail-grid,
@@ -1138,9 +1181,25 @@ function DriverTrips() {
             grid-template-columns: 1fr;
           }
 
-          .trip-detail.full {
-            grid-column: auto;
+          .trip-detail.full { grid-column: auto; }
+
+          .driver-trips-card {
+            width: 100%;
+            max-width: 100%;
+            overflow: hidden;
           }
+
+          .driver-table-wrapper { display: none; }
+
+          .driver-mobile-trip-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            padding: 8px;
+          }
+
+          .trip-modal-overlay { padding: 10px; }
+          .trip-modal-body { padding: 16px; }
         }
       `}</style>
 
@@ -1401,6 +1460,27 @@ function DriverTrips() {
               </table>
             </div>
           )}
+
+          {!loading && filteredTrips.length > 0 && (
+            <div className="driver-mobile-trip-list">
+              {filteredTrips.map((trip) => (
+                <article className="driver-mobile-trip-card" key={`mobile-${trip.bookingId}`}>
+                  <div className="driver-mobile-trip-top">
+                    <span className="driver-trip-id">#{trip.bookingId}</span>
+                    <span className={`driver-trip-status ${getStatusClass(trip.bookingStatus)}`}>
+                      {formatStatus(trip.bookingStatus)}
+                    </span>
+                  </div>
+                  <div className="driver-mobile-trip-row"><span>PASSENGER</span><strong>{trip.passengerName}</strong></div>
+                  <div className="driver-mobile-trip-row"><span>PHONE</span><strong>{trip.passengerPhone}</strong></div>
+                  <div className="driver-mobile-trip-row"><span>PICKUP</span><strong>{trip.pickupLocation}</strong></div>
+                  <div className="driver-mobile-trip-row"><span>DESTINATION</span><strong>{trip.destination}</strong></div>
+                  <div className="driver-mobile-trip-row"><span>DATE</span><strong>{formatDate(trip.bookingDate)}</strong></div>
+                  <button type="button" className="driver-trip-view" onClick={() => setSelectedTrip(trip)}>View Trip</button>
+                </article>
+              ))}
+            </div>
+          )}
         </div>
       </main>
 
@@ -1525,6 +1605,11 @@ function DriverTrips() {
 
                   <div className="driver-fare-grid">
                     <div className="driver-fare-item">
+                      <span>ESTIMATED FARE</span>
+                      <strong>{formatMoney(selectedTrip.estimatedFare)}</strong>
+                    </div>
+
+                    <div className="driver-fare-item">
                       <span>WAITING TIME</span>
                       <strong>
                         {Number(selectedTrip.waitingMinutes || 0)} min
@@ -1538,26 +1623,32 @@ function DriverTrips() {
                       </strong>
                     </div>
 
-                    {["ON_RIDE", "COMPLETED"].includes(
-                      selectedTrip.bookingStatus
-                    ) && (
-                      <div className="driver-fare-item earnings">
-                        <span>
-                          {selectedTrip.bookingStatus === "COMPLETED"
-                            ? "FINAL EARNINGS"
-                            : "ESTIMATED EARNINGS"}
-                        </span>
-                        <strong>
-                          {formatMoney(selectedTrip.driverShare)}
-                        </strong>
-                      </div>
-                    )}
+                    <div className="driver-fare-item">
+                      <span>
+                        {selectedTrip.bookingStatus === "COMPLETED"
+                          ? "FINAL FARE"
+                          : "CURRENT FARE"}
+                      </span>
+                      <strong>
+                        {formatMoney(
+                          selectedTrip.finalFare ??
+                            selectedTrip.estimatedFare
+                        )}
+                      </strong>
+                    </div>
+
+                    <div className="driver-fare-item earnings">
+                      <span>YOUR EARNINGS</span>
+                      <strong>
+                        {formatMoney(selectedTrip.driverShare)}
+                      </strong>
+                    </div>
                   </div>
 
                   <p className="driver-fare-note">
-                    The first 5 minutes of waiting are free. When the trip
-                    starts, your estimated earnings are shown. After the trip
-                    is completed, the amount is shown as final earnings.
+                    Waiting charge is added after the driver arrives and before
+                    the trip starts. This section shows only the driver\'s
+                    earning for the trip.
                   </p>
                 </div>
               </div>

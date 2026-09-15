@@ -1,30 +1,18 @@
-import {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
-import {
-  NavLink,
-  useNavigate,
-} from "react-router-dom";
-
-const API_BASE_URL =
-  "/api";
+import { useEffect, useMemo, useState } from "react";
+import { NavLink, useNavigate } from "react-router-dom";
 
 function DriverSidebar() {
+  const API_BASE_URL = "http://localhost:5171/api";
+
   const navigate = useNavigate();
 
-  const [profile, setProfile] =
-    useState({
-      fullName: "Driver",
-    });
+  const [mobileOpen, setMobileOpen] = useState(false);
 
-  const [verified, setVerified] =
-    useState(false);
+  const [profile, setProfile] = useState({
+    fullName: "Driver",
+  });
 
-  const [logoError, setLogoError] =
-    useState(false);
+  const [verified, setVerified] = useState(false);
 
   const menuItems = [
     {
@@ -59,9 +47,9 @@ function DriverSidebar() {
     },
   ];
 
-  /* =========================================================
+  /* =========================
      TOKEN
-  ========================================================= */
+  ========================= */
 
   const getToken = () =>
     localStorage.getItem("token") ||
@@ -69,149 +57,132 @@ function DriverSidebar() {
     localStorage.getItem("accessToken") ||
     sessionStorage.getItem("token") ||
     sessionStorage.getItem("authToken") ||
-    sessionStorage.getItem(
-      "accessToken"
-    ) ||
+    sessionStorage.getItem("accessToken") ||
     "";
 
-  /* =========================================================
-     LOGOUT
-  ========================================================= */
+  /* =========================
+     CLEAR LOGIN DATA
+  ========================= */
 
   const clearLoginData = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem(
-      "authToken"
-    );
-    localStorage.removeItem(
-      "accessToken"
-    );
-    localStorage.removeItem("user");
-
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem(
-      "authToken"
-    );
-    sessionStorage.removeItem(
-      "accessToken"
-    );
-    sessionStorage.removeItem("user");
+    [
+      "token",
+      "authToken",
+      "accessToken",
+      "user",
+    ].forEach((key) => {
+      localStorage.removeItem(key);
+      sessionStorage.removeItem(key);
+    });
   };
+
+  /* =========================
+     LOGOUT
+  ========================= */
 
   const handleLogout = () => {
     clearLoginData();
+
+    setMobileOpen(false);
 
     navigate("/login", {
       replace: true,
     });
   };
 
-  /* =========================================================
-     LOAD DRIVER
-  ========================================================= */
+  /* =========================
+     LOAD DRIVER PROFILE
+  ========================= */
 
-  const loadSidebarProfile =
-    async () => {
-      const token = getToken();
+  const loadSidebarProfile = async () => {
+    const token = getToken();
 
-      if (!token) {
+    if (!token) {
+      return;
+    }
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+    };
+
+    try {
+      const [userResponse, driverResponse] =
+        await Promise.all([
+          fetch(`${API_BASE_URL}/users/me`, {
+            headers,
+          }),
+
+          fetch(`${API_BASE_URL}/drivers/me`, {
+            headers,
+          }),
+        ]);
+
+      if (
+        userResponse.status === 401 ||
+        driverResponse.status === 401
+      ) {
+        clearLoginData();
+
+        navigate("/login", {
+          replace: true,
+        });
+
         return;
       }
 
-      try {
-        const headers = {
-          Authorization:
-            `Bearer ${token}`,
-        };
+      if (userResponse.ok) {
+        const user = await userResponse.json();
 
-        const [
-          userResponse,
-          driverResponse,
-        ] = await Promise.all([
-          fetch(
-            `${API_BASE_URL}/users/me`,
-            {
-              headers,
-            }
-          ),
+        setProfile({
+          fullName:
+            user.fullName || "Driver",
+        });
+      }
 
-          fetch(
-            `${API_BASE_URL}/drivers/me`,
-            {
-              headers,
-            }
-          ),
-        ]);
+      if (driverResponse.ok) {
+        const driver =
+          await driverResponse.json();
 
-        if (
-          userResponse.status === 401 ||
-          driverResponse.status === 401
-        ) {
-          clearLoginData();
-
-          navigate("/login", {
-            replace: true,
-          });
-
-          return;
-        }
-
-        if (userResponse.ok) {
-          const user =
-            await userResponse.json();
-
-          setProfile({
-            fullName:
-              user.fullName ||
-              "Driver",
-          });
-        }
-
-        if (driverResponse.ok) {
-          const driver =
-            await driverResponse.json();
-
-          setVerified(
-            driver.verificationStatus ===
-              "APPROVED"
-          );
-        }
-      } catch (error) {
-        console.error(
-          "Driver sidebar error:",
-          error
+        setVerified(
+          driver.verificationStatus ===
+            "APPROVED"
         );
       }
-    };
+    } catch (error) {
+      console.error(
+        "Driver sidebar profile error:",
+        error
+      );
+    }
+  };
 
-  /* =========================================================
-     LOAD + LISTEN FOR PROFILE UPDATE
-  ========================================================= */
+  /* =========================
+     PROFILE EFFECT
+  ========================= */
 
   useEffect(() => {
     loadSidebarProfile();
 
-    const handleProfileUpdate =
-      () => {
-        loadSidebarProfile();
-      };
+    const handleProfileUpdated = () => {
+      loadSidebarProfile();
+    };
 
     window.addEventListener(
       "driver-profile-updated",
-      handleProfileUpdate
+      handleProfileUpdated
     );
 
     return () => {
       window.removeEventListener(
         "driver-profile-updated",
-        handleProfileUpdate
+        handleProfileUpdated
       );
     };
   }, []);
 
-  /* =========================================================
+  /* =========================
      INITIALS
-  ========================================================= */
+  ========================= */
 
   const initials = useMemo(() => {
     const parts = (
@@ -231,18 +202,19 @@ function DriverSidebar() {
         .toUpperCase();
     }
 
-    return `${parts[0][0]}${
+    return (
+      parts[0][0] +
       parts[parts.length - 1][0]
-    }`.toUpperCase();
+    ).toUpperCase();
   }, [profile.fullName]);
-
-  /* =========================================================
-     UI
-  ========================================================= */
 
   return (
     <>
       <style>{`
+        /* =========================
+           SIDEBAR
+        ========================= */
+
         .driver-sidebar {
           position: fixed;
           top: 0;
@@ -257,83 +229,122 @@ function DriverSidebar() {
           display: flex;
           flex-direction: column;
 
-          z-index: 1000;
+          z-index: 5000;
 
           font-family:
             Arial,
             Helvetica,
             sans-serif;
+
+          box-sizing: border-box;
+
+          transition:
+            transform 0.25s ease;
         }
 
+        /* =========================
+           HEADER
+        ========================= */
+
         .driver-sidebar-header {
-          padding: 25px 20px;
+          padding: 26px 22px;
 
           border-bottom:
             1px solid
             rgba(255,255,255,.12);
-        }
-
-        .driver-sidebar-brand {
-          display: flex;
-          align-items: center;
-
-          gap: 11px;
-        }
-
-        .driver-logo-box {
-          width: 48px;
-          height: 48px;
 
           flex-shrink: 0;
-
-          display: flex;
-          align-items: center;
-          justify-content: center;
-
-          background: white;
-
-          border-radius: 9px;
-
-          overflow: hidden;
         }
 
-        .driver-logo-box img {
-          width: 100%;
-          height: 100%;
+        .driver-sidebar-header-row {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .driver-sidebar-logo {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          min-width: 0;
+        }
+
+        .driver-sidebar-logo-image {
+          width: 42px;
+          height: 42px;
 
           object-fit: contain;
 
-          padding: 4px;
+          background: white;
 
-          box-sizing: border-box;
+          border-radius: 8px;
+
+          padding: 3px;
+
+          flex-shrink: 0;
         }
 
-        .driver-logo-fallback {
-          color: #0b2946;
-
-          font-size: 12px;
-          font-weight: 900;
-
-          text-align: center;
+        .driver-sidebar-logo-text {
+          min-width: 0;
         }
 
-        .driver-brand-text h2 {
+        .driver-sidebar-logo-text h2 {
           margin: 0;
 
           color: white;
 
-          font-size: 21px;
+          font-size: 20px;
           font-weight: 800;
+
+          white-space: nowrap;
         }
 
-        .driver-brand-text p {
+        .driver-sidebar-logo-text p {
           margin: 4px 0 0;
 
           color:
-            rgba(255,255,255,.66);
+            rgba(255,255,255,.65);
 
           font-size: 10px;
         }
+
+        /* =========================
+           CLOSE BUTTON
+        ========================= */
+
+        .driver-sidebar-close {
+          display: none;
+
+          width: 34px;
+          height: 34px;
+
+          flex-shrink: 0;
+
+          border: none;
+
+          border-radius: 7px;
+
+          background:
+            rgba(255,255,255,.10);
+
+          color: white;
+
+          font-size: 23px;
+
+          line-height: 1;
+
+          cursor: pointer;
+        }
+
+        .driver-sidebar-close:hover {
+          background:
+            rgba(255,255,255,.18);
+        }
+
+        /* =========================
+           MENU
+        ========================= */
 
         .driver-sidebar-menu {
           flex: 1;
@@ -354,29 +365,32 @@ function DriverSidebar() {
             rgba(255,255,255,.45);
 
           font-size: 8px;
-          font-weight: 800;
+
+          font-weight: 700;
 
           letter-spacing: 1px;
         }
 
         .driver-nav-link {
           display: flex;
+
           align-items: center;
 
           gap: 11px;
 
           margin-bottom: 5px;
 
-          padding: 12px;
+          padding: 11px 12px;
 
           border-radius: 7px;
 
           color:
-            rgba(255,255,255,.8);
+            rgba(255,255,255,.78);
 
           text-decoration: none;
 
           font-size: 11px;
+
           font-weight: 600;
 
           transition: .2s;
@@ -403,7 +417,13 @@ function DriverSidebar() {
           text-align: center;
 
           font-size: 15px;
+
+          flex-shrink: 0;
         }
+
+        /* =========================
+           BOTTOM PROFILE
+        ========================= */
 
         .driver-sidebar-bottom {
           padding: 16px;
@@ -411,31 +431,35 @@ function DriverSidebar() {
           border-top:
             1px solid
             rgba(255,255,255,.12);
+
+          flex-shrink: 0;
         }
 
         .driver-profile-small {
           display: flex;
+
           align-items: center;
 
           gap: 10px;
 
-          padding: 11px;
+          padding: 10px;
 
           background:
-            rgba(255,255,255,.07);
+            rgba(255,255,255,.06);
 
           border-radius: 8px;
         }
 
         .driver-avatar {
-          width: 38px;
-          height: 38px;
-
-          flex-shrink: 0;
+          width: 36px;
+          height: 36px;
 
           display: flex;
+
           align-items: center;
           justify-content: center;
+
+          flex-shrink: 0;
 
           background: #f6c20d;
 
@@ -444,13 +468,13 @@ function DriverSidebar() {
           border-radius: 50%;
 
           font-size: 11px;
-          font-weight: 900;
+
+          font-weight: 800;
         }
 
         .driver-profile-info {
-          min-width: 0;
-
           flex: 1;
+          min-width: 0;
         }
 
         .driver-profile-info strong {
@@ -460,9 +484,11 @@ function DriverSidebar() {
 
           font-size: 10px;
 
-          overflow: hidden;
-          text-overflow: ellipsis;
           white-space: nowrap;
+
+          overflow: hidden;
+
+          text-overflow: ellipsis;
         }
 
         .driver-profile-info span {
@@ -471,91 +497,220 @@ function DriverSidebar() {
           margin-top: 3px;
 
           color:
-            rgba(255,255,255,.58);
+            rgba(255,255,255,.55);
 
           font-size: 8px;
         }
 
-        .driver-logout {
+        /* =========================
+           LOGOUT
+        ========================= */
+
+        .driver-logout-button {
           width: 100%;
 
           margin-top: 10px;
 
-          padding: 10px;
+          padding: 10px 12px;
 
-          border:
-            1px solid
-            rgba(255,255,255,.18);
-
-          background:
-            rgba(255,255,255,.05);
-
-          color: white;
+          border: none;
 
           border-radius: 7px;
 
+          background:
+            rgba(255,255,255,.09);
+
+          color: white;
+
           font-size: 10px;
+
           font-weight: 700;
 
           cursor: pointer;
-
-          transition: .2s;
         }
 
-        .driver-logout:hover {
+        .driver-logout-button:hover {
+          background:
+            rgba(255,255,255,.16);
+        }
+
+        /* =========================
+           MOBILE MENU BUTTON
+        ========================= */
+
+        .driver-mobile-btn {
+          display: none;
+
+          position: fixed;
+
+          top: 14px;
+          left: 14px;
+
+          z-index: 10001;
+
+          width: 44px;
+          height: 44px;
+
+          border: none;
+
+          border-radius: 9px;
+
           background: #f6c20d;
 
-          border-color: #f6c20d;
-
           color: #0b2946;
+
+          font-size: 24px;
+
+          font-weight: 800;
+
+          line-height: 1;
+
+          cursor: pointer;
+
+          box-shadow:
+            0 3px 10px
+            rgba(0,0,0,.15);
         }
 
-        @media(max-width:800px) {
+        /* =========================
+           OVERLAY
+        ========================= */
+
+        .driver-overlay {
+          display: none;
+        }
+
+        /* =========================
+           TABLET
+        ========================= */
+
+        @media (
+          max-width: 1000px
+        ) and (
+          min-width: 761px
+        ) {
           .driver-sidebar {
             width: 210px;
           }
+        }
 
-          .driver-logo-box {
-            width: 40px;
-            height: 40px;
+        /* =========================
+           MOBILE
+        ========================= */
+
+        @media (max-width: 760px) {
+
+          .driver-mobile-btn {
+            display: block;
           }
 
-          .driver-brand-text h2 {
-            font-size: 17px;
+          .driver-sidebar {
+            width: min(280px, 82vw);
+
+            transform:
+              translateX(-100%);
+
+            z-index: 10000;
+
+            box-shadow:
+              5px 0 20px
+              rgba(0,0,0,.20);
+          }
+
+          .driver-sidebar.mobile-open {
+            transform:
+              translateX(0);
+          }
+
+          .driver-sidebar-close {
+            display: flex;
+
+            align-items: center;
+
+            justify-content: center;
+          }
+
+          .driver-overlay {
+            display: block;
+
+            position: fixed;
+
+            inset: 0;
+
+            background:
+              rgba(0,0,0,.45);
+
+            z-index: 9999;
           }
         }
       `}</style>
 
-      <aside className="driver-sidebar">
+      {/* MOBILE HAMBURGER */}
 
-        {/* LOGO */}
+      {!mobileOpen && (
+        <button
+          type="button"
+          className="driver-mobile-btn"
+          onClick={() =>
+            setMobileOpen(true)
+          }
+          aria-label="Open menu"
+        >
+          ☰
+        </button>
+      )}
+
+      {/* MOBILE OVERLAY */}
+
+      {mobileOpen && (
+        <div
+          className="driver-overlay"
+          onClick={() =>
+            setMobileOpen(false)
+          }
+        />
+      )}
+
+      {/* SIDEBAR */}
+
+      <aside
+        className={`driver-sidebar ${
+          mobileOpen
+            ? "mobile-open"
+            : ""
+        }`}
+      >
+        {/* HEADER */}
 
         <div className="driver-sidebar-header">
 
-          <div className="driver-sidebar-brand">
+          <div className="driver-sidebar-header-row">
 
-            <div className="driver-logo-box">
+            <div className="driver-sidebar-logo">
 
-              {!logoError ? (
-                <img
-                  src="/makumbura-logo.png"
-                  alt="Makumbura Multimodal Center Logo"
-                  onError={() =>
-                    setLogoError(true)
-                  }
-                />
-              ) : (
-                <div className="driver-logo-fallback">
-                  MMC
-                </div>
-              )}
+              <img
+                src="/logo.png"
+                alt="Makumbura Logo"
+                className="driver-sidebar-logo-image"
+              />
+
+              <div className="driver-sidebar-logo-text">
+                <h2>MMC Taxi</h2>
+                <p>Driver Portal</p>
+              </div>
 
             </div>
 
-            <div className="driver-brand-text">
-              <h2>MMC Taxi</h2>
-              <p>Driver Portal</p>
-            </div>
+            <button
+              type="button"
+              className="driver-sidebar-close"
+              onClick={() =>
+                setMobileOpen(false)
+              }
+              aria-label="Close menu"
+            >
+              ×
+            </button>
 
           </div>
 
@@ -570,9 +725,15 @@ function DriverSidebar() {
           </span>
 
           {menuItems.map((item) => (
+
             <NavLink
               key={item.name}
               to={item.path}
+
+              onClick={() =>
+                setMobileOpen(false)
+              }
+
               className={({
                 isActive,
               }) =>
@@ -583,12 +744,15 @@ function DriverSidebar() {
                 }`
               }
             >
+
               <span className="driver-nav-icon">
                 {item.icon}
               </span>
 
               {item.name}
+
             </NavLink>
+
           ))}
 
         </nav>
@@ -621,7 +785,7 @@ function DriverSidebar() {
 
           <button
             type="button"
-            className="driver-logout"
+            className="driver-logout-button"
             onClick={handleLogout}
           >
             ↪ Logout

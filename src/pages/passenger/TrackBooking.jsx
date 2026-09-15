@@ -18,6 +18,7 @@ function TrackBooking() {
   const previousStatusRef = useRef(null);
   const trackedBookingIdRef = useRef(null);
   const notificationTimerRef = useRef(null);
+  const lastBackendNotificationIdRef = useRef(null);
 
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
@@ -103,7 +104,12 @@ function TrackBooking() {
       case "ON_RIDE":
         return { title: "Trip Started", message: "Your trip has started. Have a safe journey!", icon: "▶", type: "success" };
       case "COMPLETED":
-        return { title: "Trip Completed", message: "Your trip has been completed successfully.", icon: "✓", type: "success" };
+        return {
+          title: "Trip Completed",
+          message: "Your trip has been completed successfully. Please check your final fare in My Bookings.",
+          icon: "✓",
+          type: "success"
+        };
       default:
         return null;
     }
@@ -120,6 +126,86 @@ function TrackBooking() {
       setNotification(null);
       notificationTimerRef.current = null;
     }, 6000);
+  };
+
+
+  const showBackendNotification = (item) => {
+    if (!item) return;
+
+    const type = (item.notificationType || "").toUpperCase();
+    let icon = "🔔";
+    let toastType = "info";
+
+    if (type.includes("DRIVER")) {
+      icon = "🚕";
+      toastType = "info";
+    }
+
+    if (type.includes("ARRIVED")) {
+      icon = "📍";
+      toastType = "warning";
+    }
+
+    if (type.includes("TRIP") || type.includes("RIDE")) {
+      icon = "🚕";
+      toastType = "success";
+    }
+
+    if (notificationTimerRef.current) {
+      clearTimeout(notificationTimerRef.current);
+    }
+
+    setNotification({
+      id: item.notificationId || Date.now(),
+      title: item.title || "Booking Update",
+      message: item.message || "Your booking has been updated.",
+      icon,
+      type: toastType,
+    });
+
+    notificationTimerRef.current = setTimeout(() => {
+      setNotification(null);
+      notificationTimerRef.current = null;
+    }, 7000);
+  };
+
+  const loadLatestPassengerNotification = async (initializeOnly = false) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/notifications/me`, {
+        headers: getHeaders(),
+      });
+
+      if (!response.ok) return;
+
+      const data = await response.json();
+      if (!Array.isArray(data) || data.length === 0) return;
+
+      const sorted = [...data].sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+      );
+
+      const latest = sorted[0];
+      const latestId = Number(latest?.notificationId);
+
+      if (!Number.isFinite(latestId)) return;
+
+      if (lastBackendNotificationIdRef.current === null) {
+        lastBackendNotificationIdRef.current = latestId;
+
+        // On first page load, show the latest unread backend notification once.
+        if (!initializeOnly && !latest.isRead) {
+          showBackendNotification(latest);
+        }
+        return;
+      }
+
+      if (latestId !== Number(lastBackendNotificationIdRef.current)) {
+        lastBackendNotificationIdRef.current = latestId;
+        showBackendNotification(latest);
+      }
+    } catch (err) {
+      console.error("Passenger popup notification error:", err);
+    }
   };
 
   const loadTrackingData = async (showMainLoading = true) => {
@@ -187,14 +273,28 @@ function TrackBooking() {
         return;
       }
 
-      if (Number(trackedBookingIdRef.current) !== Number(activeBooking.bookingId)) {
-        trackedBookingIdRef.current = activeBooking.bookingId;
-        previousStatusRef.current = null;
-      }
+      const isNewTrackedBooking =
+        Number(trackedBookingIdRef.current) !== Number(activeBooking.bookingId);
 
-      if (previousStatusRef.current !== activeBooking.bookingStatus) {
-        showPassengerNotification(activeBooking.bookingStatus);
+      if (isNewTrackedBooking) {
+        // First load of this booking:
+        // show the passenger the CURRENT important trip status as well.
+        // This means Accepted / Arriving / Arrived / On Ride / Completed
+        // is not missed just because the passenger opened this page later.
+        trackedBookingIdRef.current = activeBooking.bookingId;
         previousStatusRef.current = activeBooking.bookingStatus;
+        showPassengerNotification(activeBooking.bookingStatus);
+      } else {
+        const previousStatus = previousStatusRef.current;
+        const currentStatus = activeBooking.bookingStatus;
+
+        // Only notify when the SAME tracked booking genuinely changes status
+        // after this Track Booking page has already started watching it.
+        if (previousStatus && previousStatus !== currentStatus) {
+          showPassengerNotification(currentStatus);
+        }
+
+        previousStatusRef.current = currentStatus;
       }
 
       setBooking(activeBooking);
@@ -291,9 +391,11 @@ function TrackBooking() {
 
   useEffect(() => {
     loadTrackingData(true);
+    loadLatestPassengerNotification(false);
 
     const interval = setInterval(() => {
       loadTrackingData(false);
+      loadLatestPassengerNotification(true);
     }, 5000);
 
     return () => clearInterval(interval);
@@ -310,9 +412,31 @@ function TrackBooking() {
     let cancelled = false;
 
     const resolveBookingLocations = async () => {
+      const backendPickup =
+        Number.isFinite(Number(booking.pickupLatitude)) &&
+        Number.isFinite(Number(booking.pickupLongitude))
+          ? {
+              lat: Number(booking.pickupLatitude),
+              lng: Number(booking.pickupLongitude),
+            }
+          : null;
+
+      const backendDestination =
+        Number.isFinite(Number(booking.destinationLatitude)) &&
+        Number.isFinite(Number(booking.destinationLongitude))
+          ? {
+              lat: Number(booking.destinationLatitude),
+              lng: Number(booking.destinationLongitude),
+            }
+          : null;
+
       const [pickup, destination] = await Promise.all([
-        geocodeLocation(booking.pickupLocation),
-        geocodeLocation(booking.destination),
+        backendPickup
+          ? Promise.resolve(backendPickup)
+          : geocodeLocation(booking.pickupLocation),
+        backendDestination
+          ? Promise.resolve(backendDestination)
+          : geocodeLocation(booking.destination),
       ]);
 
       if (!cancelled) {
@@ -326,7 +450,15 @@ function TrackBooking() {
     return () => {
       cancelled = true;
     };
-  }, [booking?.bookingId, booking?.pickupLocation, booking?.destination]);
+  }, [
+    booking?.bookingId,
+    booking?.pickupLocation,
+    booking?.destination,
+    booking?.pickupLatitude,
+    booking?.pickupLongitude,
+    booking?.destinationLatitude,
+    booking?.destinationLongitude,
+  ]);
 
   // Load the real road route from OSRM whenever the driver or target changes.
   useEffect(() => {
@@ -556,6 +688,11 @@ function TrackBooking() {
 
   useEffect(() => {
     return () => {
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+        notificationTimerRef.current = null;
+      }
+
       if (mapRef.current) {
         mapRef.current.remove();
         mapRef.current = null;
@@ -564,24 +701,38 @@ function TrackBooking() {
   }, []);
 
   const getConnectionStatus = () => {
+    if (booking?.bookingStatus === "COMPLETED") return "COMPLETED";
     if (!location) return "OFFLINE";
 
-    if (location?.tracking?.connectionStatus) {
-      return location.tracking.connectionStatus;
+    // Prefer the timestamp of the latest GPS update.
+    // A stale backend OFFLINE flag should not override a location that
+    // was actually received only a few seconds ago.
+    const recordedValue =
+      location.recordedAt ||
+      location.updatedAt ||
+      location.createdAt ||
+      location?.tracking?.lastUpdatedAt;
+
+    if (recordedValue) {
+      const recorded = new Date(recordedValue).getTime();
+
+      if (!Number.isNaN(recorded)) {
+        const ageSeconds = Math.max(
+          0,
+          (Date.now() - recorded) / 1000
+        );
+
+        if (ageSeconds <= 45) return "LIVE";
+        if (ageSeconds <= 120) return "UNSTABLE";
+        return "OFFLINE";
+      }
     }
 
-    if (!location.recordedAt) return "OFFLINE";
+    const backendStatus = location?.tracking?.connectionStatus;
 
-    const recorded = new Date(location.recordedAt).getTime();
-    if (Number.isNaN(recorded)) return "OFFLINE";
+    if (backendStatus === "LIVE") return "LIVE";
+    if (backendStatus === "UNSTABLE") return "UNSTABLE";
 
-    const ageSeconds = Math.max(
-      0,
-      (Date.now() - recorded) / 1000
-    );
-
-    if (ageSeconds <= 30) return "LIVE";
-    if (ageSeconds <= 60) return "UNSTABLE";
     return "OFFLINE";
   };
 
@@ -595,13 +746,16 @@ function TrackBooking() {
     if (connectionStatus === "UNSTABLE") {
       return "● CONNECTION UNSTABLE";
     }
-
+    if (connectionStatus === "COMPLETED") {
+      return "✓ TRIP COMPLETED";
+    }
     return "● DRIVER OFFLINE";
   };
 
   const getConnectionClass = () => {
     if (connectionStatus === "LIVE") return "live";
     if (connectionStatus === "UNSTABLE") return "unstable";
+    if (connectionStatus === "COMPLETED") return "completed";
     return "offline";
   };
 
@@ -676,6 +830,7 @@ function TrackBooking() {
           background:#fde8e8;
           color:#a43c3c;
         }
+        .live-badge.completed { background:#e3f6e7; color:#18763a; }
         .real-map {
           height: 460px; width: 100%; border: 1px solid #e1e7eb;
           border-radius: 9px; overflow: hidden; background:#f8fafc;
@@ -717,6 +872,7 @@ function TrackBooking() {
           background:#fde8e8;
           color:#a43c3c;
         }
+        .map-status-banner.completed { background:#e3f6e7; color:#18763a; }
 
         .map-legend {
           display:flex; flex-wrap:wrap; gap:10px; margin-top:12px;
@@ -851,9 +1007,14 @@ function TrackBooking() {
 
                 {connectionStatus === "OFFLINE" && (
                   <>
-                    Driver is currently offline or location updates have
-                    stopped. The marker below shows the{" "}
-                    <strong>last known location</strong>.
+                    Driver is currently offline or location updates have stopped.
+                    The map shows the <strong>last known location</strong>.
+                  </>
+                )}
+
+                {connectionStatus === "COMPLETED" && (
+                  <>
+                    <strong>Trip completed successfully.</strong> Live driver tracking has ended.
                   </>
                 )}
               </div>
@@ -869,10 +1030,18 @@ function TrackBooking() {
                 <br />
                 {booking.pickupLocation} → {booking.destination}
 
-                {routeInfo && (
+                {Number.isFinite(Number(booking.distanceKm)) && (
                   <>
                     <br />
-                    <strong>Road Distance:</strong>{" "}
+                    <strong>Booked Trip Distance:</strong>{" "}
+                    {Number(booking.distanceKm).toFixed(2)} km
+                  </>
+                )}
+
+                {routeInfo && booking.bookingStatus !== "COMPLETED" && (
+                  <>
+                    <br />
+                    <strong>Live {booking.bookingStatus === "ON_RIDE" ? "Remaining Distance" : "Driver-to-Pickup Distance"}:</strong>{" "}
                     {(routeInfo.distanceMeters / 1000).toFixed(1)} km
                     {"  •  "}
                     <strong>Estimated Time:</strong>{" "}
@@ -917,10 +1086,17 @@ function TrackBooking() {
                 <span>Driver</span>
                 <strong>
                   {booking.assignedDriverId
-                    ? `Driver #${booking.assignedDriverId}`
-                    : "Assigned Driver"}
+                    ? (booking.driverName || "Driver details loading...")
+                    : "Not Assigned"}
                 </strong>
               </div>
+
+              {booking.assignedDriverId && (
+                <div className="track-row">
+                  <span>Driver Phone</span>
+                  <strong>{booking.driverPhone || "—"}</strong>
+                </div>
+              )}
 
               <div className="track-row">
                 <span>Vehicle</span>
@@ -931,7 +1107,7 @@ function TrackBooking() {
                 <span>Registration</span>
                 <strong>
                   {booking.assignedVehicleId
-                    ? `Vehicle #${booking.assignedVehicleId}`
+                    ? (booking.vehicleRegistrationNumber || "Registration loading...")
                     : "—"}
                 </strong>
               </div>
@@ -953,6 +1129,8 @@ function TrackBooking() {
                     ? "Live"
                     : connectionStatus === "UNSTABLE"
                     ? "Connection Unstable"
+                    : connectionStatus === "COMPLETED"
+                    ? "Trip Completed"
                     : "Driver Offline"}
                 </strong>
               </div>
@@ -960,7 +1138,11 @@ function TrackBooking() {
               <div className="track-row">
                 <span>Tracking Method</span>
                 <strong>
-                  {location ? trackingSourceLabel : "Waiting for Location"}
+                  {booking.bookingStatus === "COMPLETED"
+                    ? "Tracking Ended"
+                    : location
+                    ? trackingSourceLabel
+                    : "Waiting for Location"}
                 </strong>
               </div>
 

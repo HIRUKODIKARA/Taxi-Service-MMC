@@ -27,11 +27,7 @@ function AdminDrivers() {
 
     return {
       "Content-Type": "application/json",
-      ...(token
-        ? {
-            Authorization: `Bearer ${token}`,
-          }
-        : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
   };
 
@@ -40,56 +36,31 @@ function AdminDrivers() {
       setLoading(true);
       setError("");
 
-      const [
-        driversResponse,
-        vehiclesResponse,
-        usersResponse,
-      ] = await Promise.all([
-        fetch(`${API_BASE_URL}/drivers`, {
-          headers: getHeaders(),
-        }),
-
-        fetch(`${API_BASE_URL}/vehicles`, {
-          headers: getHeaders(),
-        }),
-
-        fetch(`${API_BASE_URL}/users`, {
-          headers: getHeaders(),
-        }),
-      ]);
+      const [driversResponse, vehiclesResponse, usersResponse] =
+        await Promise.all([
+          fetch(`${API_BASE_URL}/drivers`, { headers: getHeaders() }),
+          fetch(`${API_BASE_URL}/vehicles`, { headers: getHeaders() }),
+          fetch(`${API_BASE_URL}/users`, { headers: getHeaders() }),
+        ]);
 
       if (!driversResponse.ok) {
         throw new Error("Unable to load drivers.");
       }
 
       const driversData = await driversResponse.json();
-
       const vehiclesData = vehiclesResponse.ok
         ? await vehiclesResponse.json()
         : [];
-
       const usersData = usersResponse.ok
         ? await usersResponse.json()
         : [];
 
-      setDrivers(
-        Array.isArray(driversData) ? driversData : []
-      );
-
-      setVehicles(
-        Array.isArray(vehiclesData) ? vehiclesData : []
-      );
-
-      setUsers(
-        Array.isArray(usersData) ? usersData : []
-      );
+      setDrivers(Array.isArray(driversData) ? driversData : []);
+      setVehicles(Array.isArray(vehiclesData) ? vehiclesData : []);
+      setUsers(Array.isArray(usersData) ? usersData : []);
     } catch (err) {
       console.error("Admin drivers error:", err);
-
-      setError(
-        err.message ||
-          "Unable to load driver information."
-      );
+      setError(err.message || "Unable to load driver information.");
     } finally {
       setLoading(false);
     }
@@ -99,34 +70,23 @@ function AdminDrivers() {
     loadDrivers();
   }, []);
 
-  const getDriverUser = (driver) => {
-    return users.find(
-      (user) =>
-        Number(user.userId) ===
-        Number(driver.userId)
+  const getDriverUser = (driver) =>
+    users.find(
+      (user) => Number(user.userId) === Number(driver.userId)
     );
-  };
 
-  const getAssignedVehicle = (driver) => {
-    return vehicles.find(
-      (vehicle) =>
-        Number(vehicle.driverId) ===
-        Number(driver.driverId)
+  const getAssignedVehicle = (driver) =>
+    vehicles.find(
+      (vehicle) => Number(vehicle.driverId) === Number(driver.driverId)
     );
-  };
 
   const formatStatus = (status) => {
-    if (!status) {
-      return "Unknown";
-    }
+    if (!status) return "Unknown";
 
     return status
       .replaceAll("_", " ")
       .toLowerCase()
-      .replace(
-        /\b\w/g,
-        (letter) => letter.toUpperCase()
-      );
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
   };
 
   const filteredDrivers = useMemo(() => {
@@ -151,47 +111,34 @@ function AdminDrivers() {
         .toLowerCase();
 
       const matchesSearch =
-        !query ||
-        searchableText.includes(query);
+        !query || searchableText.includes(query);
 
       const matchesStatus =
         statusFilter === "ALL" ||
-        driver.verificationStatus ===
-          statusFilter;
+        driver.verificationStatus === statusFilter;
 
       return matchesSearch && matchesStatus;
     });
-  }, [
-    drivers,
-    vehicles,
-    users,
-    search,
-    statusFilter,
-  ]);
+  }, [drivers, vehicles, users, search, statusFilter]);
 
   const approvedDrivers = drivers.filter(
-    (driver) =>
-      driver.verificationStatus === "APPROVED"
+    (driver) => driver.verificationStatus === "APPROVED"
   ).length;
 
   const pendingDrivers = drivers.filter(
-    (driver) =>
-      driver.verificationStatus === "PENDING"
+    (driver) => driver.verificationStatus === "PENDING"
   ).length;
 
   const availableDrivers = drivers.filter(
-    (driver) =>
-      driver.operationalStatus === "AVAILABLE"
+    (driver) => driver.operationalStatus === "AVAILABLE"
   ).length;
 
   const getVerificationClass = (status) => {
     switch (status) {
       case "APPROVED":
         return "approved";
-
       case "REJECTED":
         return "rejected";
-
       default:
         return "pending";
     }
@@ -201,10 +148,8 @@ function AdminDrivers() {
     switch (status) {
       case "AVAILABLE":
         return "available";
-
       case "ON_RIDE":
         return "onride";
-
       default:
         return "offline";
     }
@@ -218,6 +163,7 @@ function AdminDrivers() {
           padding: 30px;
           background: #f4f7fa;
           font-family: Arial, Helvetica, sans-serif;
+          box-sizing: border-box;
         }
 
         .admin-drivers-header {
@@ -294,6 +240,7 @@ function AdminDrivers() {
           outline: none;
           color: #53616e;
           font-size: 10px;
+          box-sizing: border-box;
         }
 
         .admin-driver-search:focus {
@@ -308,6 +255,7 @@ function AdminDrivers() {
           color: #53616e;
           font-size: 10px;
           outline: none;
+          box-sizing: border-box;
         }
 
         .admin-driver-refresh {
@@ -365,6 +313,7 @@ function AdminDrivers() {
           margin-top: 3px;
           color: #89949e;
           font-size: 8px;
+          overflow-wrap: anywhere;
         }
 
         .admin-driver-status {
@@ -376,7 +325,8 @@ function AdminDrivers() {
           white-space: nowrap;
         }
 
-        .admin-driver-status.approved {
+        .admin-driver-status.approved,
+        .admin-driver-status.available {
           background: #e3f6e7;
           color: #18763a;
         }
@@ -389,11 +339,6 @@ function AdminDrivers() {
         .admin-driver-status.rejected {
           background: #fde7e7;
           color: #a53a3a;
-        }
-
-        .admin-driver-status.available {
-          background: #e3f6e7;
-          color: #18763a;
         }
 
         .admin-driver-status.onride {
@@ -427,6 +372,66 @@ function AdminDrivers() {
           font-size: 10px;
         }
 
+        .admin-driver-mobile-list {
+          display: none;
+        }
+
+        .admin-driver-mobile-card {
+          background: white;
+          border: 1px solid #e2e7ec;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .admin-driver-mobile-head {
+          padding: 15px;
+          background: #0b2946;
+        }
+
+        .admin-driver-mobile-head .admin-driver-name {
+          display: block;
+          color: white;
+          font-size: 14px;
+        }
+
+        .admin-driver-mobile-head .admin-driver-email {
+          color: #cbd7e2;
+          font-size: 10px;
+        }
+
+        .admin-driver-mobile-body {
+          padding: 4px 15px;
+        }
+
+        .admin-driver-mobile-row {
+          display: grid;
+          grid-template-columns: 120px minmax(0, 1fr);
+          gap: 12px;
+          align-items: center;
+          padding: 12px 0;
+          border-bottom: 1px solid #edf0f3;
+        }
+
+        .admin-driver-mobile-row:last-child {
+          border-bottom: none;
+        }
+
+        .admin-driver-mobile-label {
+          color: #89949e;
+          font-size: 9px;
+          font-weight: 800;
+          text-transform: uppercase;
+        }
+
+        .admin-driver-mobile-value {
+          min-width: 0;
+          color: #53616e;
+          font-size: 11px;
+          font-weight: 600;
+          overflow-wrap: anywhere;
+          word-break: break-word;
+        }
+
         .admin-driver-note {
           margin-top: 17px;
           padding: 13px 15px;
@@ -446,15 +451,62 @@ function AdminDrivers() {
             flex-direction: column;
             align-items: stretch;
           }
+
+          .admin-driver-search {
+            min-width: 0;
+            width: 100%;
+          }
+
+          .admin-driver-filter,
+          .admin-driver-refresh {
+            width: 100%;
+          }
         }
 
-        @media(max-width: 600px) {
+        @media(max-width: 760px) {
+          .admin-drivers-page {
+            padding: 76px 16px 22px;
+            width: 100%;
+            max-width: 100%;
+            overflow-x: hidden;
+          }
+
+          .admin-drivers-header h1 {
+            font-size: 24px;
+          }
+
           .admin-driver-summary {
             grid-template-columns: 1fr;
           }
 
+          .admin-driver-table-card {
+            display: none;
+          }
+
+          .admin-driver-mobile-list {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 14px;
+          }
+
+          .admin-driver-filter-card {
+            padding: 14px;
+          }
+
+          .admin-driver-summary-card {
+            min-width: 0;
+          }
+        }
+
+        @media(max-width: 420px) {
           .admin-drivers-page {
-            padding: 20px;
+            padding-left: 12px;
+            padding-right: 12px;
+          }
+
+          .admin-driver-mobile-row {
+            grid-template-columns: 105px minmax(0, 1fr);
+            gap: 8px;
           }
         }
       `}</style>
@@ -462,18 +514,13 @@ function AdminDrivers() {
       <main className="admin-drivers-page">
         <div className="admin-drivers-header">
           <h1>Driver Management</h1>
-
           <p>
-            View registered drivers, verification
-            status, availability and assigned vehicles.
+            View registered drivers, verification status, availability and
+            assigned vehicles.
           </p>
         </div>
 
-        {error && (
-          <div className="admin-driver-error">
-            {error}
-          </div>
-        )}
+        {error && <div className="admin-driver-error">{error}</div>}
 
         <div className="admin-driver-summary">
           <div className="admin-driver-summary-card">
@@ -503,33 +550,18 @@ function AdminDrivers() {
             className="admin-driver-search"
             placeholder="Search driver name, email, licence or vehicle..."
             value={search}
-            onChange={(event) =>
-              setSearch(event.target.value)
-            }
+            onChange={(event) => setSearch(event.target.value)}
           />
 
           <select
             className="admin-driver-filter"
             value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(event.target.value)
-            }
+            onChange={(event) => setStatusFilter(event.target.value)}
           >
-            <option value="ALL">
-              All Verification Status
-            </option>
-
-            <option value="PENDING">
-              Pending
-            </option>
-
-            <option value="APPROVED">
-              Approved
-            </option>
-
-            <option value="REJECTED">
-              Rejected
-            </option>
+            <option value="ALL">All Verification Status</option>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="REJECTED">Rejected</option>
           </select>
 
           <button
@@ -541,117 +573,194 @@ function AdminDrivers() {
           </button>
         </div>
 
-        <section className="admin-driver-table-card">
-          {loading ? (
-            <div className="admin-driver-loading">
-              Loading drivers...
-            </div>
-          ) : filteredDrivers.length === 0 ? (
-            <div className="admin-driver-empty">
-              No drivers found.
-            </div>
-          ) : (
-            <div className="admin-driver-table-wrapper">
-              <table className="admin-driver-table">
-                <thead>
-                  <tr>
-                    <th>DRIVER</th>
-                    <th>PHONE</th>
-                    <th>LICENCE NO.</th>
-                    <th>VERIFICATION</th>
-                    <th>OPERATION STATUS</th>
-                    <th>GPS</th>
-                    <th>ASSIGNED VEHICLE</th>
-                  </tr>
-                </thead>
+        {loading ? (
+          <section className="admin-driver-table-card">
+            <div className="admin-driver-loading">Loading drivers...</div>
+          </section>
+        ) : filteredDrivers.length === 0 ? (
+          <section className="admin-driver-table-card">
+            <div className="admin-driver-empty">No drivers found.</div>
+          </section>
+        ) : (
+          <>
+            <section className="admin-driver-table-card">
+              <div className="admin-driver-table-wrapper">
+                <table className="admin-driver-table">
+                  <thead>
+                    <tr>
+                      <th>DRIVER</th>
+                      <th>PHONE</th>
+                      <th>LICENCE NO.</th>
+                      <th>VERIFICATION</th>
+                      <th>OPERATION STATUS</th>
+                      <th>GPS</th>
+                      <th>ASSIGNED VEHICLE</th>
+                    </tr>
+                  </thead>
 
-                <tbody>
-                  {filteredDrivers.map((driver) => {
-                    const user =
-                      getDriverUser(driver);
+                  <tbody>
+                    {filteredDrivers.map((driver) => {
+                      const user = getDriverUser(driver);
+                      const vehicle = getAssignedVehicle(driver);
 
-                    const vehicle =
-                      getAssignedVehicle(driver);
+                      return (
+                        <tr key={driver.driverId}>
+                          <td>
+                            <span className="admin-driver-name">
+                              {user?.fullName || `Driver #${driver.driverId}`}
+                            </span>
+                            <span className="admin-driver-email">
+                              {user?.email || "—"}
+                            </span>
+                          </td>
 
-                    return (
-                      <tr key={driver.driverId}>
-                        <td>
-                          <span className="admin-driver-name">
-                            {user?.fullName ||
-                              `Driver #${driver.driverId}`}
-                          </span>
+                          <td>{user?.phone || "—"}</td>
+                          <td>{driver.drivingLicenseNo || "—"}</td>
 
-                          <span className="admin-driver-email">
-                            {user?.email || "—"}
-                          </span>
-                        </td>
+                          <td>
+                            <span
+                              className={`admin-driver-status ${getVerificationClass(
+                                driver.verificationStatus
+                              )}`}
+                            >
+                              {formatStatus(driver.verificationStatus)}
+                            </span>
+                          </td>
 
-                        <td>
+                          <td>
+                            <span
+                              className={`admin-driver-status ${getOperationalClass(
+                                driver.operationalStatus
+                              )}`}
+                            >
+                              {formatStatus(driver.operationalStatus)}
+                            </span>
+                          </td>
+
+                          <td>
+                            <span
+                              className={`admin-driver-gps ${
+                                driver.gpsEnabled ? "enabled" : "disabled"
+                              }`}
+                            >
+                              {driver.gpsEnabled ? "● Enabled" : "● Disabled"}
+                            </span>
+                          </td>
+
+                          <td>
+                            {vehicle
+                              ? vehicle.registrationNumber
+                              : "Not Assigned"}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <section className="admin-driver-mobile-list">
+              {filteredDrivers.map((driver) => {
+                const user = getDriverUser(driver);
+                const vehicle = getAssignedVehicle(driver);
+
+                return (
+                  <article
+                    className="admin-driver-mobile-card"
+                    key={`mobile-${driver.driverId}`}
+                  >
+                    <div className="admin-driver-mobile-head">
+                      <span className="admin-driver-name">
+                        {user?.fullName || `Driver #${driver.driverId}`}
+                      </span>
+                      <span className="admin-driver-email">
+                        {user?.email || "—"}
+                      </span>
+                    </div>
+
+                    <div className="admin-driver-mobile-body">
+                      <div className="admin-driver-mobile-row">
+                        <span className="admin-driver-mobile-label">Phone</span>
+                        <span className="admin-driver-mobile-value">
                           {user?.phone || "—"}
-                        </td>
+                        </span>
+                      </div>
 
-                        <td>
-                          {driver.drivingLicenseNo ||
-                            "—"}
-                        </td>
+                      <div className="admin-driver-mobile-row">
+                        <span className="admin-driver-mobile-label">
+                          Licence No.
+                        </span>
+                        <span className="admin-driver-mobile-value">
+                          {driver.drivingLicenseNo || "—"}
+                        </span>
+                      </div>
 
-                        <td>
+                      <div className="admin-driver-mobile-row">
+                        <span className="admin-driver-mobile-label">
+                          Verification
+                        </span>
+                        <span className="admin-driver-mobile-value">
                           <span
                             className={`admin-driver-status ${getVerificationClass(
                               driver.verificationStatus
                             )}`}
                           >
-                            {formatStatus(
-                              driver.verificationStatus
-                            )}
+                            {formatStatus(driver.verificationStatus)}
                           </span>
-                        </td>
+                        </span>
+                      </div>
 
-                        <td>
+                      <div className="admin-driver-mobile-row">
+                        <span className="admin-driver-mobile-label">
+                          Operation Status
+                        </span>
+                        <span className="admin-driver-mobile-value">
                           <span
                             className={`admin-driver-status ${getOperationalClass(
                               driver.operationalStatus
                             )}`}
                           >
-                            {formatStatus(
-                              driver.operationalStatus
-                            )}
+                            {formatStatus(driver.operationalStatus)}
                           </span>
-                        </td>
+                        </span>
+                      </div>
 
-                        <td>
+                      <div className="admin-driver-mobile-row">
+                        <span className="admin-driver-mobile-label">GPS</span>
+                        <span className="admin-driver-mobile-value">
                           <span
                             className={`admin-driver-gps ${
-                              driver.gpsEnabled
-                                ? "enabled"
-                                : "disabled"
+                              driver.gpsEnabled ? "enabled" : "disabled"
                             }`}
                           >
-                            {driver.gpsEnabled
-                              ? "● Enabled"
-                              : "● Disabled"}
+                            {driver.gpsEnabled ? "● Enabled" : "● Disabled"}
                           </span>
-                        </td>
+                        </span>
+                      </div>
 
-                        <td>
+                      <div className="admin-driver-mobile-row">
+                        <span className="admin-driver-mobile-label">
+                          Assigned Vehicle
+                        </span>
+                        <span className="admin-driver-mobile-value">
                           {vehicle
                             ? vehicle.registrationNumber
                             : "Not Assigned"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+                        </span>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </section>
+          </>
+        )}
 
         <div className="admin-driver-note">
-          Driver approval and rejection actions are
-          handled from the <strong>Driver Verification</strong>{" "}
-          page. This page is for driver monitoring and
-          management information.
+          Driver approval and rejection actions are handled from the{" "}
+          <strong>Driver Verification</strong> page. This page is for driver
+          monitoring and management information.
         </div>
       </main>
     </>

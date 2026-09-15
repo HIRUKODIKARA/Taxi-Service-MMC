@@ -1576,3 +1576,264 @@ button {
 .back-btn:hover {
   background: #e0b000;
 }
+
+/* =========================================================
+   2026 RESPONSIVE FOUNDATION - MOBILE / TABLET
+   Desktop styles above are preserved.
+========================================================= */
+
+html,
+body,
+#root {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+/* Public pages */
+@media (max-width: 900px) {
+  .home-container,
+  .navbar-container {
+    width: 92%;
+  }
+
+  .home-hero {
+    min-height: 560px;
+    background-position: center center;
+  }
+
+  .hero-text {
+    max-width: 560px;
+  }
+
+  .hero-text h1 {
+    font-size: clamp(42px, 7vw, 54px);
+  }
+
+  .features-box,
+  .services-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .feature-card:nth-child(2) {
+    border-right: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .home-container {
+    width: 92%;
+  }
+
+  .home-hero {
+    min-height: auto;
+    padding: 64px 0 92px;
+    background-position: 55% center;
+  }
+
+  .home-overlay {
+    background: linear-gradient(
+      180deg,
+      rgba(5, 21, 37, 0.72),
+      rgba(5, 21, 37, 0.82)
+    );
+  }
+
+  .hero-content {
+    width: 100%;
+  }
+
+  .hero-text {
+    max-width: none;
+    text-align: center;
+  }
+
+  .hero-label {
+    max-width: 100%;
+    padding: 8px 14px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .hero-text h1 {
+    font-size: clamp(34px, 10vw, 44px);
+    line-height: 1.08;
+  }
+
+  .hero-text p {
+    font-size: 15px;
+    line-height: 1.6;
+  }
+
+  .hero-buttons {
+    width: 100%;
+    flex-direction: column;
+  }
+
+  .hero-buttons a,
+  .primary-btn,
+  .outline-btn {
+    width: 100%;
+    text-align: center;
+  }
+
+  .features-box {
+    margin-top: -42px;
+  }
+
+  .features-box,
+  .services-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .feature-card {
+    border-right: none;
+    border-bottom: 1px solid #eeeeee;
+  }
+
+  .feature-card:last-child {
+    border-bottom: none;
+  }
+
+  .section-title h2,
+  .home-cta h2 {
+    font-size: 27px;
+  }
+
+  .services-home {
+    padding-bottom: 60px;
+  }
+
+  .home-cta {
+    padding: 48px 18px;
+  }
+}
+
+/* Shared application content */
+@media (max-width: 760px) {
+  .sa-header,
+  .sa-page-header,
+  .report-section-heading,
+  .operations-dashboard-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .sa-summary-grid,
+  .sa-summary-grid.three,
+  .sa-stat-grid,
+  .sa-dashboard-grid,
+  .sa-simple-grid,
+  .sa-report-grid,
+  .sa-grid-2,
+  .sa-grid-3,
+  .sa-form-grid,
+  .sa-detail-grid,
+  .report-summary-grid,
+  .report-grid-2,
+  .report-grid-3,
+  .report-finance-grid,
+  .report-mini-summary-grid,
+  .report-rating-layout,
+  .activity-summary-grid,
+  .activity-details-grid,
+  .settings-form-grid,
+  .operations-dashboard-summary,
+  .operations-dashboard-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .sa-page,
+  .sa-page-content,
+  .operations-dashboard-page {
+    padding-left: 16px !important;
+    padding-right: 16px !important;
+  }
+
+  .sa-card,
+  .report-section,
+  .settings-panel,
+  .operations-dashboard-panel {
+    padding: 16px;
+  }
+
+  .sa-table-wrapper,
+  .report-table-wrapper,
+  .table-responsive {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .sa-table,
+  .report-table,
+  .operations-table {
+    min-width: 720px;
+  }
+
+  .sa-toolbar,
+  .sa-table-tools,
+  .activity-tools,
+  .vehicle-type-add,
+  .report-header-actions {
+    width: 100%;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sa-input,
+  .sa-select,
+  .sa-table-tools input,
+  .sa-table-tools select,
+  .activity-tools input,
+  .activity-tools select,
+  .vehicle-type-add input,
+  .vehicle-type-add button,
+  .report-header-actions button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .sa-modal-overlay,
+  .activity-modal-overlay {
+    padding: 12px;
+  }
+
+  .sa-modal,
+  .activity-modal {
+    max-width: 100%;
+    max-height: 92vh;
+    overflow-y: auto;
+  }
+
+  .sa-modal-footer {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 480px) {
+  .sa-header h1,
+  .sa-page-header h1,
+  .operations-dashboard-header h1 {
+    font-size: 24px !important;
+  }
+
+  .sa-summary-card h2,
+  .sa-stat-card h2,
+  .activity-summary-card h2,
+  .operations-dashboard-card h2 {
+    font-size: 23px !important;
+  }
+
+  .sa-primary-btn,
+  .back-btn {
+    max-width: 100%;
+  }
+}

@@ -176,21 +176,23 @@ function PassengerNotifications() {
       .toUpperCase();
 
     if (
+      value.includes("DRIVER") ||
+      value.includes("LOCATION") ||
+      value.includes("ARRIVED")
+    ) {
+      return "📍";
+    }
+
+    if (
       value.includes("BOOKING") ||
-      value.includes("TRIP")
+      value.includes("TRIP") ||
+      value.includes("RIDE")
     ) {
       return "🚕";
     }
 
     if (value.includes("PAYMENT")) {
       return "💳";
-    }
-
-    if (
-      value.includes("DRIVER") ||
-      value.includes("LOCATION")
-    ) {
-      return "📍";
     }
 
     if (

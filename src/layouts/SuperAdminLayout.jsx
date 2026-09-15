@@ -469,8 +469,19 @@ function SuperAdminLayout() {
         }
 
         @media (max-width: 760px) {
+          .super-admin-main-content {
+            margin-left: 0;
+            width: 100%;
+            min-width: 0;
+            overflow-x: hidden;
+          }
+
+          .super-admin-back-area {
+            padding: 72px 16px 0;
+          }
+
           .sa-page {
-            padding: 10px 18px 30px;
+            padding: 10px 16px 30px;
           }
 
           .sa-header {
@@ -488,6 +499,7 @@ function SuperAdminLayout() {
 
           .sa-input {
             width: 100%;
+            min-width: 0;
           }
         }
       `}</style>

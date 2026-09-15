@@ -106,34 +106,53 @@ namespace MmcTaxiApi.Controllers
         public async Task<ActionResult> GetMyBookings()
         {
             var userId = GetCurrentUserId();
-            if (userId == null) return Unauthorized(new { message = "Unable to identify logged-in user." });
+            if (userId == null)
+                return Unauthorized(new { message = "Unable to identify logged-in user." });
 
             if (User.IsInRole("PASSENGER"))
             {
-                var items = await _context.Bookings.Where(b => b.PassengerId == userId.Value)
-                    .OrderByDescending(b => b.CreatedAt).ToListAsync();
+                var items = await (
+                    from b in _context.Bookings
+                    where b.PassengerId == userId.Value
+                    join d0 in _context.Drivers on b.AssignedDriverId equals (int?)d0.DriverId into driverJoin
+                    from d in driverJoin.DefaultIfEmpty()
+                    join u0 in _context.Users on d.UserId equals u0.UserId into userJoin
+                    from du in userJoin.DefaultIfEmpty()
+                    join v0 in _context.Vehicles on b.AssignedVehicleId equals (int?)v0.VehicleId into vehicleJoin
+                    from v in vehicleJoin.DefaultIfEmpty()
+                    orderby b.CreatedAt descending
+                    select new
+                    {
+                        b.BookingId, b.PassengerId, b.PassengerName, b.PassengerPhone, b.BookingSource,
+                        b.TripDirection, b.OperationalAreaId, b.PickupLocation, b.PickupLatitude,
+                        b.PickupLongitude, b.Destination, b.DestinationLatitude, b.DestinationLongitude,
+                        b.BookingDate, b.BookingTime, b.VehicleTypeId, b.AssignedDriverId,
+                        b.AssignedVehicleId, b.BookingStatus, b.DistanceKm, b.NormalFare,
+                        b.RouteDiscountAmount, b.EstimatedFare, b.DriverArrivedAt, b.TripStartedAt,
+                        b.WaitingMinutes, b.WaitingChargePerMinute, b.WaitingCharge, b.FinalFare,
+                        b.DriverPercentage, b.MmcPercentage, b.DriverShare, b.MmcShare,
+                        b.CreatedByUserId, b.CreatedAt, b.UpdatedAt,
+                        DriverName = du != null ? du.FullName : null,
+                        DriverPhone = du != null ? du.Phone : null,
+                        DriverOperationalStatus = d != null ? d.OperationalStatus : null,
+                        VehicleRegistrationNumber = v != null ? v.RegistrationNumber : null,
+                        VehicleMake = v != null ? v.Make : null,
+                        VehicleModel = v != null ? v.Model : null,
+                        VehicleColor = v != null ? v.Color : null
+                    }
+                ).ToListAsync();
+
                 return Ok(items);
             }
 
             if (User.IsInRole("DRIVER"))
             {
                 if (!await HasPermissionAsync("VIEW_TRIP_REQUESTS"))
-                {
-                    return StatusCode(403, new
-                    {
-                        message = "You do not have VIEW_TRIP_REQUESTS permission."
-                    });
-                }
+                    return StatusCode(403, new { message = "You do not have VIEW_TRIP_REQUESTS permission." });
 
                 var driver = await GetCurrentDriverAsync();
-
                 if (driver == null)
-                {
-                    return NotFound(new
-                    {
-                        message = "Driver profile not found."
-                    });
-                }
+                    return NotFound(new { message = "Driver profile not found." });
 
                 var items = await _context.Bookings
                     .Where(b => b.AssignedDriverId == driver.DriverId)
@@ -144,9 +163,7 @@ namespace MmcTaxiApi.Controllers
             }
 
             if (await HasPermissionAsync("VIEW_BOOKINGS"))
-            {
                 return Ok(await _context.Bookings.OrderByDescending(b => b.CreatedAt).ToListAsync());
-            }
 
             return StatusCode(403, new { message = "You do not have permission to view bookings." });
         }
@@ -547,6 +564,8 @@ namespace MmcTaxiApi.Controllers
                     $"Booking #{booking.BookingId} was created through {booking.BookingSource}."
                 );
 
+                // Booking stays PENDING until Taxi Operations dispatches it to drivers.
+
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
@@ -555,6 +574,84 @@ namespace MmcTaxiApi.Controllers
                     new { id = booking.BookingId },
                     booking
                 );
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        // =========================================================
+        // PUT: api/bookings/1/send-to-drivers
+        // Taxi Operations dispatches a PENDING booking to matching drivers
+        // =========================================================
+        [HttpPut("{id}/send-to-drivers")]
+        public async Task<IActionResult> SendToDrivers(int id)
+        {
+            if (!IsOperationsUser())
+            {
+                return StatusCode(403, new
+                {
+                    message = "Only Taxi Operations, Admin or Super Admin can send bookings to drivers."
+                });
+            }
+
+            var currentUserId = GetCurrentUserId();
+            if (currentUserId == null)
+                return Unauthorized(new { message = "Unable to identify logged-in user." });
+
+            await using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var booking = await _context.Bookings
+                    .FirstOrDefaultAsync(b => b.BookingId == id);
+
+                if (booking == null)
+                {
+                    await transaction.RollbackAsync();
+                    return NotFound(new { message = "Booking not found." });
+                }
+
+                if (booking.BookingStatus != "PENDING")
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new
+                    {
+                        message = $"Only PENDING bookings can be sent to drivers. Current status: {booking.BookingStatus}."
+                    });
+                }
+
+                if (booking.AssignedDriverId != null || booking.AssignedVehicleId != null)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { message = "This booking already has an assigned driver or vehicle." });
+                }
+
+                var requestCount = await CreateDriverRequestsForBookingAsync(booking, currentUserId.Value);
+
+                if (requestCount == 0)
+                {
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+                    return BadRequest(new
+                    {
+                        message = "No matching APPROVED and AVAILABLE drivers were found. Booking remains PENDING.",
+                        bookingId = booking.BookingId,
+                        bookingStatus = booking.BookingStatus
+                    });
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return Ok(new
+                {
+                    message = $"Booking #{booking.BookingId} sent to {requestCount} available driver(s).",
+                    bookingId = booking.BookingId,
+                    bookingStatus = booking.BookingStatus,
+                    requestCount
+                });
             }
             catch
             {
@@ -774,121 +871,168 @@ namespace MmcTaxiApi.Controllers
         }
 
         // =========================================================
+        // GET: api/bookings/driver/requests
+        // Pending broadcast requests for the logged-in driver
+        // =========================================================
+        [HttpGet("driver/requests")]
+        [HasPermission("VIEW_TRIP_REQUESTS")]
+        public async Task<IActionResult> GetDriverRequests()
+        {
+            var driver = await GetCurrentDriverAsync();
+            if (driver == null)
+                return NotFound(new { message = "Driver profile not found." });
+
+            var requests = await (
+                from request in _context.BookingDriverRequests
+                join booking in _context.Bookings on request.BookingId equals booking.BookingId
+                join vehicle in _context.Vehicles on request.VehicleId equals vehicle.VehicleId
+                where request.DriverId == driver.DriverId
+                      && request.RequestStatus == "PENDING"
+                      && booking.BookingStatus == "WAITING_FOR_DRIVER"
+                      && booking.AssignedDriverId == null
+                orderby request.SentAt descending
+                select new
+                {
+                    requestId = request.RequestId,
+                    bookingId = booking.BookingId,
+                    passengerName = booking.PassengerName,
+                    passengerPhone = booking.PassengerPhone,
+                    pickupLocation = booking.PickupLocation,
+                    pickupLatitude = booking.PickupLatitude,
+                    pickupLongitude = booking.PickupLongitude,
+                    destination = booking.Destination,
+                    destinationLatitude = booking.DestinationLatitude,
+                    destinationLongitude = booking.DestinationLongitude,
+                    distanceKm = booking.DistanceKm,
+                    estimatedFare = booking.EstimatedFare,
+                    bookingSource = booking.BookingSource,
+                    bookingDate = booking.BookingDate,
+                    bookingTime = booking.BookingTime,
+                    vehicleId = vehicle.VehicleId,
+                    vehicleTypeId = vehicle.VehicleTypeId,
+                    requestStatus = request.RequestStatus,
+                    sentAt = request.SentAt
+                }
+            ).ToListAsync();
+
+            return Ok(requests);
+        }
+
+        // =========================================================
         // PUT: api/bookings/1/accept
         // =========================================================
         [HttpPut("{id}/accept")]
         [HasPermission("ACCEPT_TRIP")]
         public async Task<IActionResult> AcceptBooking(int id)
         {
-            var booking = await _context.Bookings.FindAsync(id);
-
-            if (booking == null)
-            {
-                return NotFound(new
-                {
-                    message = "Booking not found."
-                });
-            }
-
             var currentDriver = await GetCurrentDriverAsync();
-            if (currentDriver == null) return NotFound(new { message = "Driver profile not found." });
-            if (booking.AssignedDriverId != currentDriver.DriverId)
-                return StatusCode(403, new { message = "This booking is not assigned to the logged-in driver." });
+            if (currentDriver == null)
+                return NotFound(new { message = "Driver profile not found." });
 
-            if (booking.BookingStatus != "WAITING_FOR_DRIVER")
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Only a WAITING_FOR_DRIVER booking can be accepted."
-                });
-            }
-
-            if (booking.AssignedDriverId == null ||
-                booking.AssignedVehicleId == null)
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Driver and vehicle must be assigned before accepting."
-                });
-            }
-
-            var driver = await _context.Drivers.FindAsync(
-                booking.AssignedDriverId.Value);
-
-            var vehicle = await _context.Vehicles.FindAsync(
-                booking.AssignedVehicleId.Value);
-
-            if (driver == null || vehicle == null)
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Assigned driver or vehicle could not be found."
-                });
-            }
-
-            if (driver.VerificationStatus != "APPROVED")
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Assigned driver is not approved."
-                });
-            }
-
-            if (driver.OperationalStatus != "AVAILABLE")
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Driver is no longer available."
-                });
-            }
-
-            if (vehicle.OperationalStatus != "AVAILABLE" ||
-                vehicle.AccountStatus != "ACTIVE")
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Assigned vehicle is no longer available."
-                });
-            }
-
-            var oldStatus = booking.BookingStatus;
-
-            await using var transaction =
-                await _context.Database.BeginTransactionAsync();
+            await using var transaction = await _context.Database.BeginTransactionAsync(
+                System.Data.IsolationLevel.Serializable);
 
             try
             {
+                var booking = await _context.Bookings.FirstOrDefaultAsync(b => b.BookingId == id);
+                if (booking == null)
+                {
+                    await transaction.RollbackAsync();
+                    return NotFound(new { message = "Booking not found." });
+                }
+
+                if (booking.BookingStatus != "WAITING_FOR_DRIVER" || booking.AssignedDriverId != null)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { message = "This booking has already been accepted or is no longer available." });
+                }
+
+                var request = await _context.BookingDriverRequests.FirstOrDefaultAsync(r =>
+                    r.BookingId == id &&
+                    r.DriverId == currentDriver.DriverId &&
+                    r.RequestStatus == "PENDING");
+
+                if (request == null)
+                {
+                    await transaction.RollbackAsync();
+                    return StatusCode(403, new { message = "You do not have an active request for this booking." });
+                }
+
+                if (currentDriver.VerificationStatus != "APPROVED" || currentDriver.OperationalStatus != "AVAILABLE")
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { message = "Your driver account is not currently available to accept trips." });
+                }
+
+                var vehicle = await _context.Vehicles.FirstOrDefaultAsync(v =>
+                    v.VehicleId == request.VehicleId && v.DriverId == currentDriver.DriverId);
+
+                if (vehicle == null || vehicle.AccountStatus != "ACTIVE" ||
+                    vehicle.OperationalStatus != "AVAILABLE" || vehicle.VehicleTypeId != booking.VehicleTypeId)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { message = "Your requested vehicle is no longer available for this booking." });
+                }
+
+                var driverBusy = await _context.Bookings.AnyAsync(b =>
+                    b.BookingId != booking.BookingId &&
+                    b.AssignedDriverId == currentDriver.DriverId &&
+                    (b.BookingStatus == "ACCEPTED" || b.BookingStatus == "DRIVER_ARRIVING" ||
+                     b.BookingStatus == "DRIVER_ARRIVED" || b.BookingStatus == "ON_RIDE"));
+
+                if (driverBusy)
+                {
+                    await transaction.RollbackAsync();
+                    return BadRequest(new { message = "You already have an active trip." });
+                }
+
+                var now = DateTime.Now;
+                var oldStatus = booking.BookingStatus;
+
+                booking.AssignedDriverId = currentDriver.DriverId;
+                booking.AssignedVehicleId = vehicle.VehicleId;
                 booking.BookingStatus = "ACCEPTED";
-                booking.UpdatedAt = DateTime.Now;
+                booking.UpdatedAt = now;
+
+                request.RequestStatus = "ACCEPTED";
+                request.RespondedAt = now;
+
+                var otherRequests = await _context.BookingDriverRequests
+                    .Where(r => r.BookingId == booking.BookingId &&
+                                r.RequestId != request.RequestId &&
+                                r.RequestStatus == "PENDING")
+                    .ToListAsync();
+
+                foreach (var other in otherRequests)
+                {
+                    other.RequestStatus = "EXPIRED";
+                    other.RespondedAt = now;
+                }
 
                 AddBookingHistoryEntity(
-                    booking.BookingId,
-                    oldStatus,
-                    "ACCEPTED",
-                    driver.UserId,
-                    "Driver accepted booking"
+                    booking.BookingId, oldStatus, "ACCEPTED", currentDriver.UserId,
+                    $"Driver #{currentDriver.DriverId} accepted the booking."
                 );
 
                 if (booking.PassengerId != null)
                 {
+                    var driverName = await _context.Users
+                        .Where(u => u.UserId == currentDriver.UserId)
+                        .Select(u => u.FullName)
+                        .FirstOrDefaultAsync() ?? "Your driver";
+
                     AddNotificationEntity(
                         booking.PassengerId.Value,
-                        "Booking Accepted",
-                        $"Your booking #{booking.BookingId} has been accepted by the driver.",
-                        "BOOKING"
+                        "Driver Found",
+                        $"{driverName} accepted booking #{booking.BookingId}. Driver and vehicle details are now available.",
+                        "DRIVER"
                     );
                 }
 
                 AddActivityLogEntity(
-                    driver.UserId,
+                    currentDriver.UserId,
                     "BOOKING_ACCEPTED",
-                    $"Driver #{driver.DriverId} accepted booking #{booking.BookingId}."
+                    $"Driver #{currentDriver.DriverId} accepted booking #{booking.BookingId} using vehicle #{vehicle.VehicleId}."
                 );
 
                 await _context.SaveChangesAsync();
@@ -896,8 +1040,11 @@ namespace MmcTaxiApi.Controllers
 
                 return Ok(new
                 {
-                    message = "Booking accepted successfully.",
-                    booking
+                    message = "Trip accepted successfully.",
+                    bookingId = booking.BookingId,
+                    bookingStatus = booking.BookingStatus,
+                    driverId = currentDriver.DriverId,
+                    vehicleId = vehicle.VehicleId
                 });
             }
             catch
@@ -914,86 +1061,35 @@ namespace MmcTaxiApi.Controllers
         [HasPermission("REJECT_TRIP")]
         public async Task<IActionResult> RejectBooking(int id)
         {
-            var booking = await _context.Bookings.FindAsync(id);
-
-            if (booking == null)
-            {
-                return NotFound(new
-                {
-                    message = "Booking not found."
-                });
-            }
-
             var currentDriver = await GetCurrentDriverAsync();
-            if (currentDriver == null) return NotFound(new { message = "Driver profile not found." });
-            if (booking.AssignedDriverId != currentDriver.DriverId)
-                return StatusCode(403, new { message = "This booking is not assigned to the logged-in driver." });
+            if (currentDriver == null)
+                return NotFound(new { message = "Driver profile not found." });
 
-            if (booking.BookingStatus != "WAITING_FOR_DRIVER")
-            {
-                return BadRequest(new
-                {
-                    message =
-                        "Only a WAITING_FOR_DRIVER booking can be rejected by a driver."
-                });
-            }
+            var booking = await _context.Bookings.FirstOrDefaultAsync(b => b.BookingId == id);
+            if (booking == null)
+                return NotFound(new { message = "Booking not found." });
 
-            var rejectingDriverUserId =
-                await GetAssignedDriverUserId(booking);
+            if (booking.BookingStatus != "WAITING_FOR_DRIVER" || booking.AssignedDriverId != null)
+                return BadRequest(new { message = "This booking is no longer waiting for drivers." });
 
-            var oldStatus = booking.BookingStatus;
-            var previousDriverId = booking.AssignedDriverId;
-            var previousVehicleId = booking.AssignedVehicleId;
+            var request = await _context.BookingDriverRequests.FirstOrDefaultAsync(r =>
+                r.BookingId == id && r.DriverId == currentDriver.DriverId && r.RequestStatus == "PENDING");
 
-            await using var transaction =
-                await _context.Database.BeginTransactionAsync();
+            if (request == null)
+                return NotFound(new { message = "Active trip request not found." });
 
-            try
-            {
-                booking.BookingStatus = "REJECTED";
-                booking.AssignedDriverId = null;
-                booking.AssignedVehicleId = null;
-                booking.UpdatedAt = DateTime.Now;
+            request.RequestStatus = "REJECTED";
+            request.RespondedAt = DateTime.Now;
 
-                AddBookingHistoryEntity(
-                    booking.BookingId,
-                    oldStatus,
-                    "REJECTED",
-                    rejectingDriverUserId,
-                    "Driver rejected booking"
-                );
+            AddActivityLogEntity(
+                currentDriver.UserId,
+                "TRIP_REQUEST_REJECTED",
+                $"Driver #{currentDriver.DriverId} rejected request for booking #{id}."
+            );
 
-                if (booking.PassengerId != null)
-                {
-                    AddNotificationEntity(
-                        booking.PassengerId.Value,
-                        "Driver Assignment Update",
-                        $"The assigned driver could not accept booking #{booking.BookingId}. MMC Taxi Operations will reassign your booking.",
-                        "BOOKING"
-                    );
-                }
+            await _context.SaveChangesAsync();
 
-                AddActivityLogEntity(
-                    rejectingDriverUserId,
-                    "BOOKING_REJECTED",
-                    $"Booking #{booking.BookingId} was rejected. Previous driver #{previousDriverId}, vehicle #{previousVehicleId}."
-                );
-
-                await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
-
-                return Ok(new
-                {
-                    message =
-                        "Booking rejected. It can now be reassigned by Taxi Operations.",
-                    booking
-                });
-            }
-            catch
-            {
-                await transaction.RollbackAsync();
-                throw;
-            }
+            return Ok(new { message = "Trip request rejected.", bookingId = id });
         }
 
         // =========================================================
@@ -1664,6 +1760,86 @@ namespace MmcTaxiApi.Controllers
                     CreatedAt = DateTime.Now
                 }
             );
+        }
+
+        private async Task<int> CreateDriverRequestsForBookingAsync(Booking booking, int dispatchedByUserId)
+        {
+            var matches = await (
+                from driver in _context.Drivers
+                join vehicle in _context.Vehicles on driver.DriverId equals vehicle.DriverId
+                where driver.VerificationStatus == "APPROVED"
+                      && driver.OperationalStatus == "AVAILABLE"
+                      && vehicle.AccountStatus == "ACTIVE"
+                      && vehicle.OperationalStatus == "AVAILABLE"
+                      && vehicle.VehicleTypeId == booking.VehicleTypeId
+                select new { Driver = driver, Vehicle = vehicle }
+            ).ToListAsync();
+
+            var requestCount = 0;
+
+            foreach (var match in matches)
+            {
+                var driverBusy = await _context.Bookings.AnyAsync(b =>
+                    b.BookingId != booking.BookingId &&
+                    b.AssignedDriverId == match.Driver.DriverId &&
+                    (b.BookingStatus == "WAITING_FOR_DRIVER" || b.BookingStatus == "ACCEPTED" ||
+                     b.BookingStatus == "DRIVER_ARRIVING" || b.BookingStatus == "DRIVER_ARRIVED" ||
+                     b.BookingStatus == "ON_RIDE"));
+
+                if (driverBusy) continue;
+
+                var alreadyExists = await _context.BookingDriverRequests.AnyAsync(r =>
+                    r.BookingId == booking.BookingId && r.DriverId == match.Driver.DriverId);
+
+                if (alreadyExists) continue;
+
+                _context.BookingDriverRequests.Add(new BookingDriverRequest
+                {
+                    BookingId = booking.BookingId,
+                    DriverId = match.Driver.DriverId,
+                    VehicleId = match.Vehicle.VehicleId,
+                    RequestStatus = "PENDING",
+                    SentAt = DateTime.Now,
+                    RespondedAt = null
+                });
+
+                AddNotificationEntity(
+                    match.Driver.UserId,
+                    "New Trip Request",
+                    $"New booking #{booking.BookingId}: {booking.PickupLocation} to {booking.Destination}. Open Trip Requests to accept.",
+                    "BOOKING"
+                );
+
+                requestCount++;
+            }
+
+            if (requestCount > 0)
+            {
+                var oldStatus = booking.BookingStatus;
+                booking.BookingStatus = "WAITING_FOR_DRIVER";
+                booking.UpdatedAt = DateTime.Now;
+
+                AddBookingHistoryEntity(
+                    booking.BookingId, oldStatus, "WAITING_FOR_DRIVER", dispatchedByUserId,
+                    $"Taxi Operations sent booking to {requestCount} available driver(s)."
+                );
+
+                AddActivityLogEntity(
+                    dispatchedByUserId,
+                    "DRIVER_REQUESTS_SENT",
+                    $"Taxi Operations sent booking #{booking.BookingId} to {requestCount} available driver(s)."
+                );
+            }
+            else
+            {
+                AddActivityLogEntity(
+                    dispatchedByUserId,
+                    "NO_AVAILABLE_DRIVERS",
+                    $"Taxi Operations tried to dispatch booking #{booking.BookingId}, but no matching available drivers were found."
+                );
+            }
+
+            return requestCount;
         }
 
         private async Task<int?> GetAssignedDriverUserId(

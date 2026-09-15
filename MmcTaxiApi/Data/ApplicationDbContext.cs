@@ -50,6 +50,9 @@ namespace MmcTaxiApi.Data
         public DbSet<Booking> Bookings { get; set; }
         public DbSet<BookingStatusHistory> BookingStatusHistories { get; set; }
 
+        // NEW - booking requests sent to available drivers
+        public DbSet<BookingDriverRequest> BookingDriverRequests { get; set; }
+
         // =========================================================
         // PAYMENTS
         // =========================================================
@@ -290,6 +293,74 @@ namespace MmcTaxiApi.Data
                     .WithMany()
                     .HasForeignKey(x =>
                         x.OperationalAreaId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            // =====================================================
+            // BOOKING DRIVER REQUESTS TABLE
+            // =====================================================
+
+            modelBuilder.Entity<BookingDriverRequest>(entity =>
+            {
+                entity.ToTable("booking_driver_requests");
+
+                entity.HasKey(x => x.RequestId);
+
+                entity.Property(x => x.RequestId)
+                    .HasColumnName("request_id");
+
+                entity.Property(x => x.BookingId)
+                    .HasColumnName("booking_id");
+
+                entity.Property(x => x.DriverId)
+                    .HasColumnName("driver_id");
+
+                entity.Property(x => x.VehicleId)
+                    .HasColumnName("vehicle_id");
+
+                entity.Property(x => x.RequestStatus)
+                    .HasColumnName("request_status")
+                    .HasMaxLength(20)
+                    .IsRequired();
+
+                entity.Property(x => x.SentAt)
+                    .HasColumnName("sent_at");
+
+                entity.Property(x => x.RespondedAt)
+                    .HasColumnName("responded_at");
+
+                // One booking should only have one request
+                // for the same driver.
+                entity.HasIndex(x => new
+                {
+                    x.BookingId,
+                    x.DriverId
+                })
+                .IsUnique();
+
+                // Makes loading a driver's pending requests faster.
+                entity.HasIndex(x => new
+                {
+                    x.DriverId,
+                    x.RequestStatus
+                });
+
+                // BookingDriverRequest -> Booking
+                entity.HasOne<Booking>()
+                    .WithMany()
+                    .HasForeignKey(x => x.BookingId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                // BookingDriverRequest -> Driver
+                entity.HasOne<Driver>()
+                    .WithMany()
+                    .HasForeignKey(x => x.DriverId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                // BookingDriverRequest -> Vehicle
+                entity.HasOne<Vehicle>()
+                    .WithMany()
+                    .HasForeignKey(x => x.VehicleId)
                     .OnDelete(DeleteBehavior.Restrict);
             });
         }
